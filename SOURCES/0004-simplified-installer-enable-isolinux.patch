@@ -1,0 +1,1499 @@
+From 38354fefff11c95cde11ad4d3796091e017bc8e8 Mon Sep 17 00:00:00 2001
+From: Antonio Murdaca <runcom@linux.com>
+Date: Thu, 9 Mar 2023 22:12:22 +0100
+Subject: [PATCH 4/4] simplified-installer: enable isolinux
+
+Signed-off-by: Antonio Murdaca <runcom@linux.com>
+---
+ internal/distro/rhel8/edge.go                 |  1 +
+ internal/distro/rhel9/edge.go                 |  1 +
+ internal/image/ostree_simplified_installer.go |  7 ++-
+ internal/manifest/coi_iso_tree.go             | 21 +++++++
+ ...arch64-edge_simplified_installer-boot.json | 21 +++++++
+ ...x86_64-edge_simplified_installer-boot.json | 57 +++++++++++++++++++
+ ...arch64-edge_simplified_installer-boot.json | 21 +++++++
+ ...x86_64-edge_simplified_installer-boot.json | 57 +++++++++++++++++++
+ ...arch64-edge_simplified_installer-boot.json | 15 +++++
+ ...x86_64-edge_simplified_installer-boot.json | 51 +++++++++++++++++
+ ...arch64-edge_simplified_installer-boot.json | 15 +++++
+ ...x86_64-edge_simplified_installer-boot.json | 51 +++++++++++++++++
+ ...arch64-edge_simplified_installer-boot.json | 15 +++++
+ ...x86_64-edge_simplified_installer-boot.json | 51 +++++++++++++++++
+ ...arch64-edge_simplified_installer-boot.json | 15 +++++
+ ...x86_64-edge_simplified_installer-boot.json | 51 +++++++++++++++++
+ ...arch64-edge_simplified_installer-boot.json | 21 +++++++
+ ...x86_64-edge_simplified_installer-boot.json | 57 +++++++++++++++++++
+ ...arch64-edge_simplified_installer-boot.json | 15 +++++
+ ...x86_64-edge_simplified_installer-boot.json | 51 +++++++++++++++++
+ ...arch64-edge_simplified_installer-boot.json | 21 +++++++
+ ...x86_64-edge_simplified_installer-boot.json | 57 +++++++++++++++++++
+ ...arch64-edge_simplified_installer-boot.json | 21 +++++++
+ ...x86_64-edge_simplified_installer-boot.json | 57 +++++++++++++++++++
+ 24 files changed, 749 insertions(+), 1 deletion(-)
+
+diff --git a/internal/distro/rhel8/edge.go b/internal/distro/rhel8/edge.go
+index 13e668a14..6cb90a8ca 100644
+--- a/internal/distro/rhel8/edge.go
++++ b/internal/distro/rhel8/edge.go
+@@ -328,6 +328,7 @@ func edgeSimplifiedInstallerPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"policycoreutils",
+ 			"policycoreutils-python-utils",
+ 			"procps-ng",
++			"redhat-logos",
+ 			"rootfiles",
+ 			"setools-console",
+ 			"sudo",
+diff --git a/internal/distro/rhel9/edge.go b/internal/distro/rhel9/edge.go
+index 4a7c7406f..2598c9a2f 100644
+--- a/internal/distro/rhel9/edge.go
++++ b/internal/distro/rhel9/edge.go
+@@ -465,6 +465,7 @@ func edgeSimplifiedInstallerPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"policycoreutils",
+ 			"policycoreutils-python-utils",
+ 			"procps-ng",
++			"redhat-logos",
+ 			"rootfiles",
+ 			"setools-console",
+ 			"sudo",
+diff --git a/internal/image/ostree_simplified_installer.go b/internal/image/ostree_simplified_installer.go
+index c3c6da678..9a8d90068 100644
+--- a/internal/image/ostree_simplified_installer.go
++++ b/internal/image/ostree_simplified_installer.go
+@@ -144,19 +144,24 @@ func (img *OSTreeSimplifiedInstaller) InstantiateManifest(m *manifest.Manifest,
+ 		},
+ 	}
+ 
++	// enable ISOLinux on x86_64 only
++	isoLinuxEnabled := img.Platform.GetArch() == platform.ARCH_X86_64
++
+ 	isoTreePipeline := manifest.NewCoreOSISOTree(m,
+ 		buildPipeline,
+ 		rawImage,
+ 		coiPipeline,
+ 		bootTreePipeline,
+ 		isoLabel)
++	isoTreePipeline.KernelOpts = kernelOpts
+ 	isoTreePipeline.PartitionTable = rootfsPartitionTable
+ 	isoTreePipeline.OSName = img.OSName
+ 	isoTreePipeline.PayloadPath = fmt.Sprintf("/%s", rawImageFilename)
++	isoTreePipeline.ISOLinux = isoLinuxEnabled
+ 
+ 	isoPipeline := manifest.NewISO(m, buildPipeline, isoTreePipeline, isoLabel)
+ 	isoPipeline.Filename = img.Filename
+-	isoPipeline.ISOLinux = false
++	isoPipeline.ISOLinux = isoLinuxEnabled
+ 
+ 	artifact := isoPipeline.Export()
+ 	return artifact, nil
+diff --git a/internal/manifest/coi_iso_tree.go b/internal/manifest/coi_iso_tree.go
+index 46d92eba5..89093e842 100644
+--- a/internal/manifest/coi_iso_tree.go
++++ b/internal/manifest/coi_iso_tree.go
+@@ -28,6 +28,11 @@ type CoreOSISOTree struct {
+ 	PayloadPath string
+ 
+ 	isoLabel string
++
++	// Enable ISOLinux stage
++	ISOLinux bool
++
++	KernelOpts []string
+ }
+ 
+ func NewCoreOSISOTree(m *Manifest,
+@@ -132,6 +137,22 @@ func (p *CoreOSISOTree) serialize() osbuild.Pipeline {
+ 	copyStage := osbuild.NewCopyStageSimple(copyStageOptions, copyStageInputs)
+ 	pipeline.AddStage(copyStage)
+ 
++	if p.ISOLinux {
++		isoLinuxOptions := &osbuild.ISOLinuxStageOptions{
++			Product: osbuild.ISOLinuxProduct{
++				Name:    p.coiPipeline.product,
++				Version: p.coiPipeline.version,
++			},
++			Kernel: osbuild.ISOLinuxKernel{
++				Dir:  "/images/pxeboot",
++				Opts: p.KernelOpts,
++			},
++		}
++
++		isoLinuxStage := osbuild.NewISOLinuxStage(isoLinuxOptions, p.coiPipeline.Name())
++		pipeline.AddStage(isoLinuxStage)
++	}
++
+ 	copyInputs = osbuild.NewPipelineTreeInputs(inputName, p.bootTreePipeline.Name())
+ 	pipeline.AddStage(osbuild.NewCopyStageSimple(
+ 		&osbuild.CopyStageOptions{
+diff --git a/test/data/manifests/centos_8-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/centos_8-aarch64-edge_simplified_installer-boot.json
+index fffd37ee3..3d39b43b7 100644
+--- a/test/data/manifests/centos_8-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/centos_8-aarch64-edge_simplified_installer-boot.json
+@@ -5371,6 +5371,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:b8dd6d9549148d4469333794b0495817157913de2aa5a6827bb1e20e8cf58d56",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:8f0c85b97a40d8b22bcc6cda29c078fe8e8d6deff7ede90d9e755826fea2ff8c",
+                     "options": {
+@@ -6897,6 +6905,9 @@
+           "sha256:b81e9cc635b9ef9cba61cee83da1bab028869ebc70ba96999925fe3cd1ea52df": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el8/cs8-aarch64-appstream-20220208/Packages/lorax-28.14.65-1.el8.aarch64.rpm"
+           },
++          "sha256:b8dd6d9549148d4469333794b0495817157913de2aa5a6827bb1e20e8cf58d56": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el8/cs8-aarch64-appstream-20220208/Packages/centos-logos-85.8-2.el8.aarch64.rpm"
++          },
+           "sha256:b938a6facc8d8a3de12b369871738bb531c822b1ec5212501b06bcaaf6cd25fa": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el8/cs8-aarch64-baseos-20220208/Packages/ncurses-libs-6.1-9.20180224.el8.aarch64.rpm"
+           },
+@@ -13174,6 +13185,16 @@
+         "checksum": "sha256:6e23374341e975a1d29e46d141204cc8e847125be6aea898eea1d0b809a8b1a4",
+         "check_gpg": true
+       },
++      {
++        "name": "centos-logos",
++        "epoch": 0,
++        "version": "85.8",
++        "release": "2.el8",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/public/el8/cs8-aarch64-appstream-20220208/Packages/centos-logos-85.8-2.el8.aarch64.rpm",
++        "checksum": "sha256:b8dd6d9549148d4469333794b0495817157913de2aa5a6827bb1e20e8cf58d56",
++        "check_gpg": true
++      },
+       {
+         "name": "clevis",
+         "epoch": 0,
+diff --git a/test/data/manifests/centos_8-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/centos_8-x86_64-edge_simplified_installer-boot.json
+index d0ee7deac..261e37da0 100644
+--- a/test/data/manifests/centos_8-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/centos_8-x86_64-edge_simplified_installer-boot.json
+@@ -5498,6 +5498,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:1bf9de8b1436ae1cb5624309a58c677e24dbdf70af96fd7de99cbe7c38655a85",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:270361d4856e4c3c0d3efa9b87655c3cb81a0193caf0e2bf8e10f311f0ba1ec6",
+                     "options": {
+@@ -6098,6 +6106,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "CentOS Stream",
++                "version": "8-stream"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=CentOS-Stream-8-x86_64-dvd",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -6139,7 +6178,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "CentOS-Stream-8-x86_64-dvd",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -6296,6 +6340,9 @@
+           "sha256:1b18f8d64433a5e74f3c0c0a962737833826527dfa6b9a26942506f7990885af": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el8/cs8-x86_64-baseos-20220208/Packages/python3-librepo-1.14.2-1.el8.x86_64.rpm"
+           },
++          "sha256:1bf9de8b1436ae1cb5624309a58c677e24dbdf70af96fd7de99cbe7c38655a85": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el8/cs8-x86_64-appstream-20220208/Packages/centos-logos-85.8-2.el8.x86_64.rpm"
++          },
+           "sha256:1c4b186665558747023a60d0d662d3780a1bc49e578062f4b70100c71ab2220c": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el8/cs8-x86_64-baseos-20220208/Packages/mokutil-0.3.0-11.el8.x86_64.rpm"
+           },
+@@ -13479,6 +13526,16 @@
+         "checksum": "sha256:c0d2015fe322085dc5cb92709e1a2c852ce783f8436f9eaf38974a580435f4a2",
+         "check_gpg": true
+       },
++      {
++        "name": "centos-logos",
++        "epoch": 0,
++        "version": "85.8",
++        "release": "2.el8",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/public/el8/cs8-x86_64-appstream-20220208/Packages/centos-logos-85.8-2.el8.x86_64.rpm",
++        "checksum": "sha256:1bf9de8b1436ae1cb5624309a58c677e24dbdf70af96fd7de99cbe7c38655a85",
++        "check_gpg": true
++      },
+       {
+         "name": "clevis",
+         "epoch": 0,
+diff --git a/test/data/manifests/centos_9-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/centos_9-aarch64-edge_simplified_installer-boot.json
+index f922bc01a..fb57f958c 100644
+--- a/test/data/manifests/centos_9-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/centos_9-aarch64-edge_simplified_installer-boot.json
+@@ -3124,6 +3124,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:7c4228a8b0b081ba72ca2c54a89724a10aedda91898475bab0de2e5b392c12bc",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:badd8729863d81a782324f3d6d14fd3b7435763c2623fcc95919f78374c99426",
+                     "options": {
+@@ -6809,6 +6817,9 @@
+           "sha256:7b3c089462e362919b919e574cd71933e37e1781094a357cd352851608d65a6f": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el9/cs9-aarch64-appstream-20230101/Packages/containers-common-1-46.el9.aarch64.rpm"
+           },
++          "sha256:7c4228a8b0b081ba72ca2c54a89724a10aedda91898475bab0de2e5b392c12bc": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el9/cs9-aarch64-appstream-20230101/Packages/centos-logos-90.4-1.el9.aarch64.rpm"
++          },
+           "sha256:7ccc9d433def3922b81c136a1e3c6bd5882f16b80915b2b92145c7cca4eb1b6b": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el9/cs9-aarch64-baseos-20230101/Packages/libtirpc-1.3.3-1.el9.aarch64.rpm"
+           },
+@@ -10467,6 +10478,16 @@
+         "checksum": "sha256:287460070b8990140a3d2f3b5f7b66933452b2953a7db6b583d6b1b56c0ec962",
+         "check_gpg": true
+       },
++      {
++        "name": "centos-logos",
++        "epoch": 0,
++        "version": "90.4",
++        "release": "1.el9",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/public/el9/cs9-aarch64-appstream-20230101/Packages/centos-logos-90.4-1.el9.aarch64.rpm",
++        "checksum": "sha256:7c4228a8b0b081ba72ca2c54a89724a10aedda91898475bab0de2e5b392c12bc",
++        "check_gpg": true
++      },
+       {
+         "name": "checkpolicy",
+         "epoch": 0,
+diff --git a/test/data/manifests/centos_9-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/centos_9-x86_64-edge_simplified_installer-boot.json
+index 51e2bbc6d..5902824d1 100644
+--- a/test/data/manifests/centos_9-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/centos_9-x86_64-edge_simplified_installer-boot.json
+@@ -3186,6 +3186,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:a5eacdd23a3ac1480fbb62021db5bb380469f38d8c2a95d2742eae3f00d44482",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:00030b411b38c1ed0babef38334c1ca7505d1548e616d8689eb2a724034d9b28",
+                     "options": {
+@@ -6283,6 +6291,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "CentOS Stream",
++                "version": "9-stream"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=CentOS-Stream-9-BaseOS-x86_64",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -6324,7 +6363,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "CentOS-Stream-9-BaseOS-x86_64",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -7078,6 +7122,9 @@
+           "sha256:a42949a7f6c1750c6a07d55907ce7ac3b4b05d281eec0fd5926edc528fb61ab9": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el9/cs9-x86_64-baseos-20230101/Packages/libgudev-237-1.el9.x86_64.rpm"
+           },
++          "sha256:a5eacdd23a3ac1480fbb62021db5bb380469f38d8c2a95d2742eae3f00d44482": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el9/cs9-x86_64-appstream-20230101/Packages/centos-logos-90.4-1.el9.x86_64.rpm"
++          },
+           "sha256:a70fdda85cd771ef5bf5b17c2996e4ff4d21c2e5b1eece1764a87f12e720ab68": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/public/el9/cs9-x86_64-baseos-20230101/Packages/libmnl-1.0.4-15.el9.x86_64.rpm"
+           },
+@@ -10679,6 +10726,16 @@
+         "checksum": "sha256:e454141f6b730c46833881ac3c83de618055629c18520574ad9fd1cf5fd18157",
+         "check_gpg": true
+       },
++      {
++        "name": "centos-logos",
++        "epoch": 0,
++        "version": "90.4",
++        "release": "1.el9",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/public/el9/cs9-x86_64-appstream-20230101/Packages/centos-logos-90.4-1.el9.x86_64.rpm",
++        "checksum": "sha256:a5eacdd23a3ac1480fbb62021db5bb380469f38d8c2a95d2742eae3f00d44482",
++        "check_gpg": true
++      },
+       {
+         "name": "checkpolicy",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_8-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_8-aarch64-edge_simplified_installer-boot.json
+index 63a5cbe3a..9a0321da5 100644
+--- a/test/data/manifests/rhel_8-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_8-aarch64-edge_simplified_installer-boot.json
+@@ -2266,6 +2266,9 @@
+                   {
+                     "id": "sha256:c2f286f6b75caf1508829d748c35833ee5fba762e0175b1f5dbb23ab8ab2079e"
+                   },
++                  {
++                    "id": "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8"
++                  },
+                   {
+                     "id": "sha256:c2f9ce9ba473dcb0b6a2e20b3362bfcc18762e26bcb1a0a871c2cd5724910c71"
+                   },
+@@ -3906,6 +3909,9 @@
+           "sha256:eb29b9d93a6c65047676592e7d90e042ecc18c8e6cf33d8241b30744e8571983": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/binutils-2.30-117.el8.aarch64.rpm"
+           },
++          "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/redhat-logos-84.5-1.el8.aarch64.rpm"
++          },
+           "sha256:ed28e1e31109e27ce1c676914364c9f1dd46b71d00cb4cf13931f0fec6cf6978": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/libtasn1-4.13-3.el8.aarch64.rpm"
+           },
+@@ -8996,6 +9002,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/readline-7.0-10.el8.aarch64.rpm",
+         "checksum": "sha256:c2f286f6b75caf1508829d748c35833ee5fba762e0175b1f5dbb23ab8ab2079e"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "84.5",
++        "release": "1.el8",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/redhat-logos-84.5-1.el8.aarch64.rpm",
++        "checksum": "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8"
++      },
+       {
+         "name": "redhat-release",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_8-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_8-x86_64-edge_simplified_installer-boot.json
+index fea9c2756..bbfb932bf 100644
+--- a/test/data/manifests/rhel_8-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_8-x86_64-edge_simplified_installer-boot.json
+@@ -2312,6 +2312,9 @@
+                   {
+                     "id": "sha256:ef221ca565f17ed425997e97fdeb5fc27261910659fa61372b18d93e1a5613e9"
+                   },
++                  {
++                    "id": "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418"
++                  },
+                   {
+                     "id": "sha256:36c07f737470317af023136f3c03e74142c8ff0d55947655ed95970d215a6f9a"
+                   },
+@@ -2810,6 +2813,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "Red Hat Enterprise Linux",
++                "version": "8.7"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=RHEL-8-7-0-BaseOS-x86_64",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -2851,7 +2885,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "RHEL-8-7-0-BaseOS-x86_64",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -3512,6 +3551,9 @@
+           "sha256:8ed24bf92f4a389d82399a2dfcdcd2b8812b354d32e50807ddf557b978532756": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-appstream-n8.7-20221015/Packages/libblockdev-loop-2.24-11.el8.x86_64.rpm"
+           },
++          "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.7-20221015/Packages/redhat-logos-84.5-1.el8.x86_64.rpm"
++          },
+           "sha256:8fc053b5c801ecbdd880e6676c7a8f43afa6730dff130c145fff37d1f00231f8": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.7-20221015/Packages/iwl2000-firmware-18.168.6.1-110.el8.1.noarch.rpm"
+           },
+@@ -9193,6 +9235,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.7-20221015/Packages/readline-7.0-10.el8.x86_64.rpm",
+         "checksum": "sha256:ef221ca565f17ed425997e97fdeb5fc27261910659fa61372b18d93e1a5613e9"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "84.5",
++        "release": "1.el8",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.7-20221015/Packages/redhat-logos-84.5-1.el8.x86_64.rpm",
++        "checksum": "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418"
++      },
+       {
+         "name": "redhat-release",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_86-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_86-aarch64-edge_simplified_installer-boot.json
+index 89207defa..4ed0b40eb 100644
+--- a/test/data/manifests/rhel_86-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_86-aarch64-edge_simplified_installer-boot.json
+@@ -2272,6 +2272,9 @@
+                   {
+                     "id": "sha256:c2f286f6b75caf1508829d748c35833ee5fba762e0175b1f5dbb23ab8ab2079e"
+                   },
++                  {
++                    "id": "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8"
++                  },
+                   {
+                     "id": "sha256:244a7fe034af09c4048e6c92e6da4b835cef218c2ad1d2bc4db1386eec8cb56f"
+                   },
+@@ -3909,6 +3912,9 @@
+           "sha256:e9993e3d2d37f62717465ae2dbf8b741cd9c4767004fc2a829d68bdc89a7679e": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.6-20220201/Packages/libcom_err-1.45.6-2.el8.aarch64.rpm"
+           },
++          "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.6-20220201/Packages/redhat-logos-84.5-1.el8.aarch64.rpm"
++          },
+           "sha256:ebacfc5607f6ed16d4b53d7e642320caa0df3b5edf7253ba1286cc3a230af440": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.6-20220201/Packages/dbus-common-1.12.8-18.el8.noarch.rpm"
+           },
+@@ -9017,6 +9023,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.6-20220201/Packages/readline-7.0-10.el8.aarch64.rpm",
+         "checksum": "sha256:c2f286f6b75caf1508829d748c35833ee5fba762e0175b1f5dbb23ab8ab2079e"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "84.5",
++        "release": "1.el8",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.6-20220201/Packages/redhat-logos-84.5-1.el8.aarch64.rpm",
++        "checksum": "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8"
++      },
+       {
+         "name": "redhat-release",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_86-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_86-x86_64-edge_simplified_installer-boot.json
+index 20ce30d7c..9d534bbd7 100644
+--- a/test/data/manifests/rhel_86-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_86-x86_64-edge_simplified_installer-boot.json
+@@ -2318,6 +2318,9 @@
+                   {
+                     "id": "sha256:ef221ca565f17ed425997e97fdeb5fc27261910659fa61372b18d93e1a5613e9"
+                   },
++                  {
++                    "id": "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418"
++                  },
+                   {
+                     "id": "sha256:9b1251422cfd498da3569583dea926198827e6e5fcf2a3d3d9c5521401ad0fc9"
+                   },
+@@ -2813,6 +2816,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "Red Hat Enterprise Linux",
++                "version": "8.6"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=RHEL-8-6-0-BaseOS-x86_64",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -2854,7 +2888,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "RHEL-8-6-0-BaseOS-x86_64",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -3551,6 +3590,9 @@
+           "sha256:8ef984beb164090cc29ad2432377e98c37596443bef9142a01c676c02e62f057": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.6-20220201/Packages/rpm-libs-4.14.3-21.el8.x86_64.rpm"
+           },
++          "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.6-20220201/Packages/redhat-logos-84.5-1.el8.x86_64.rpm"
++          },
+           "sha256:8feb2ad7758487b1fa632fbc353cb4f93d2bdaf4d29262b9498baee122aa9502": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-appstream-n8.6-20220201/Packages/cloud-utils-growpart-0.31-3.el8.noarch.rpm"
+           },
+@@ -9214,6 +9256,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.6-20220201/Packages/readline-7.0-10.el8.x86_64.rpm",
+         "checksum": "sha256:ef221ca565f17ed425997e97fdeb5fc27261910659fa61372b18d93e1a5613e9"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "84.5",
++        "release": "1.el8",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.6-20220201/Packages/redhat-logos-84.5-1.el8.x86_64.rpm",
++        "checksum": "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418"
++      },
+       {
+         "name": "redhat-release",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_87-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_87-aarch64-edge_simplified_installer-boot.json
+index ecd995d10..fd3997b47 100644
+--- a/test/data/manifests/rhel_87-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_87-aarch64-edge_simplified_installer-boot.json
+@@ -2266,6 +2266,9 @@
+                   {
+                     "id": "sha256:c2f286f6b75caf1508829d748c35833ee5fba762e0175b1f5dbb23ab8ab2079e"
+                   },
++                  {
++                    "id": "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8"
++                  },
+                   {
+                     "id": "sha256:c2f9ce9ba473dcb0b6a2e20b3362bfcc18762e26bcb1a0a871c2cd5724910c71"
+                   },
+@@ -3906,6 +3909,9 @@
+           "sha256:eb29b9d93a6c65047676592e7d90e042ecc18c8e6cf33d8241b30744e8571983": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/binutils-2.30-117.el8.aarch64.rpm"
+           },
++          "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/redhat-logos-84.5-1.el8.aarch64.rpm"
++          },
+           "sha256:ed28e1e31109e27ce1c676914364c9f1dd46b71d00cb4cf13931f0fec6cf6978": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/libtasn1-4.13-3.el8.aarch64.rpm"
+           },
+@@ -8996,6 +9002,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/readline-7.0-10.el8.aarch64.rpm",
+         "checksum": "sha256:c2f286f6b75caf1508829d748c35833ee5fba762e0175b1f5dbb23ab8ab2079e"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "84.5",
++        "release": "1.el8",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.7-20221015/Packages/redhat-logos-84.5-1.el8.aarch64.rpm",
++        "checksum": "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8"
++      },
+       {
+         "name": "redhat-release",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_87-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_87-x86_64-edge_simplified_installer-boot.json
+index 728292143..7f5c7b2bd 100644
+--- a/test/data/manifests/rhel_87-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_87-x86_64-edge_simplified_installer-boot.json
+@@ -2312,6 +2312,9 @@
+                   {
+                     "id": "sha256:ef221ca565f17ed425997e97fdeb5fc27261910659fa61372b18d93e1a5613e9"
+                   },
++                  {
++                    "id": "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418"
++                  },
+                   {
+                     "id": "sha256:36c07f737470317af023136f3c03e74142c8ff0d55947655ed95970d215a6f9a"
+                   },
+@@ -2810,6 +2813,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "Red Hat Enterprise Linux",
++                "version": "8.7"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=RHEL-8-7-0-BaseOS-x86_64",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -2851,7 +2885,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "RHEL-8-7-0-BaseOS-x86_64",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -3512,6 +3551,9 @@
+           "sha256:8ed24bf92f4a389d82399a2dfcdcd2b8812b354d32e50807ddf557b978532756": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-appstream-n8.7-20221015/Packages/libblockdev-loop-2.24-11.el8.x86_64.rpm"
+           },
++          "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.7-20221015/Packages/redhat-logos-84.5-1.el8.x86_64.rpm"
++          },
+           "sha256:8fc053b5c801ecbdd880e6676c7a8f43afa6730dff130c145fff37d1f00231f8": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.7-20221015/Packages/iwl2000-firmware-18.168.6.1-110.el8.1.noarch.rpm"
+           },
+@@ -9193,6 +9235,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.7-20221015/Packages/readline-7.0-10.el8.x86_64.rpm",
+         "checksum": "sha256:ef221ca565f17ed425997e97fdeb5fc27261910659fa61372b18d93e1a5613e9"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "84.5",
++        "release": "1.el8",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.7-20221015/Packages/redhat-logos-84.5-1.el8.x86_64.rpm",
++        "checksum": "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418"
++      },
+       {
+         "name": "redhat-release",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_88-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_88-aarch64-edge_simplified_installer-boot.json
+index a417ce45e..bba931347 100644
+--- a/test/data/manifests/rhel_88-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_88-aarch64-edge_simplified_installer-boot.json
+@@ -2266,6 +2266,9 @@
+                   {
+                     "id": "sha256:c2f286f6b75caf1508829d748c35833ee5fba762e0175b1f5dbb23ab8ab2079e"
+                   },
++                  {
++                    "id": "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8"
++                  },
+                   {
+                     "id": "sha256:612bfe0f6aaef375518169a0d4d41a2945b09d6e9e297e83ecef82031c432490"
+                   },
+@@ -3903,6 +3906,9 @@
+           "sha256:e96db2f374859e49b6270520274aa0225c060dd4a5a9363e8fdceac206223901": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-appstream-n8.8-20221025/Packages/plymouth-0.9.4-11.20200615git1e36e30.el8.aarch64.rpm"
+           },
++          "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.8-20221025/Packages/redhat-logos-84.5-1.el8.aarch64.rpm"
++          },
+           "sha256:ec1e8c912cc2302e0e5b94d3d31dc40a6a1e082f14c69ef32400b8bfeef791c1": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.8-20221025/Packages/glibc-all-langpacks-2.28-216.el8.aarch64.rpm"
+           },
+@@ -8996,6 +9002,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.8-20221025/Packages/readline-7.0-10.el8.aarch64.rpm",
+         "checksum": "sha256:c2f286f6b75caf1508829d748c35833ee5fba762e0175b1f5dbb23ab8ab2079e"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "84.5",
++        "release": "1.el8",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-aarch64-baseos-n8.8-20221025/Packages/redhat-logos-84.5-1.el8.aarch64.rpm",
++        "checksum": "sha256:eb3514a91e4964b6b237e0f6d808b4e6a0016eb030a2c2566f9c627a4c352fa8"
++      },
+       {
+         "name": "redhat-release",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_88-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_88-x86_64-edge_simplified_installer-boot.json
+index 7635c6385..1df88c376 100644
+--- a/test/data/manifests/rhel_88-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_88-x86_64-edge_simplified_installer-boot.json
+@@ -2312,6 +2312,9 @@
+                   {
+                     "id": "sha256:ef221ca565f17ed425997e97fdeb5fc27261910659fa61372b18d93e1a5613e9"
+                   },
++                  {
++                    "id": "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418"
++                  },
+                   {
+                     "id": "sha256:26f7b39b6fc3f5ed6a650e616ec6816fd7c49a19290f9bba32e34fafd067a1ea"
+                   },
+@@ -2810,6 +2813,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "Red Hat Enterprise Linux",
++                "version": "8.8"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=RHEL-8-8-0-BaseOS-x86_64",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -2851,7 +2885,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "RHEL-8-8-0-BaseOS-x86_64",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -3536,6 +3575,9 @@
+           "sha256:8e31f6cca87a15d2d3216571b3d7c84755c2e79ff5f7c1bf02c75dbf696a47ca": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.8-20221025/Packages/elfutils-libelf-0.187-4.el8.x86_64.rpm"
+           },
++          "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.8-20221025/Packages/redhat-logos-84.5-1.el8.x86_64.rpm"
++          },
+           "sha256:8fc053b5c801ecbdd880e6676c7a8f43afa6730dff130c145fff37d1f00231f8": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.8-20221025/Packages/iwl2000-firmware-18.168.6.1-110.el8.1.noarch.rpm"
+           },
+@@ -9193,6 +9235,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.8-20221025/Packages/readline-7.0-10.el8.x86_64.rpm",
+         "checksum": "sha256:ef221ca565f17ed425997e97fdeb5fc27261910659fa61372b18d93e1a5613e9"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "84.5",
++        "release": "1.el8",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el8/el8-x86_64-baseos-n8.8-20221025/Packages/redhat-logos-84.5-1.el8.x86_64.rpm",
++        "checksum": "sha256:8efd3d9307abb80a5dd244d76202c3a5591f462f0effbef51e12f0d31ec9d418"
++      },
+       {
+         "name": "redhat-release",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_9-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_9-aarch64-edge_simplified_installer-boot.json
+index f98b7b296..8a846fc18 100644
+--- a/test/data/manifests/rhel_9-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-edge_simplified_installer-boot.json
+@@ -5943,6 +5943,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:80113c2978bf7cce2bc94f3c887ca77621ffec0d0ab38df730bed8c2461849f7",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:7ccc4a5fa203fcbac963a392d29cd3bcbe82fb762833e8d406b1f11dc8451639",
+                     "options": {
+@@ -6896,6 +6904,9 @@
+           "sha256:7e9179402556fa825fcfb16e873eb67b2b6c810149162e83ee771f997fd8f2ec": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-baseos-n9.1-20221015/Packages/tar-1.34-5.el9.aarch64.rpm"
+           },
++          "sha256:80113c2978bf7cce2bc94f3c887ca77621ffec0d0ab38df730bed8c2461849f7": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-appstream-n9.1-20221015/Packages/redhat-logos-90.4-1.el9.aarch64.rpm"
++          },
+           "sha256:8021ebcd73fcdfb0fed4e9077d8483d1a2dfa95acc1bd823ecd77e49ac3ddb27": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-baseos-n9.1-20221015/Packages/libbasicobjects-0.1.1-53.el9.aarch64.rpm"
+           },
+@@ -14073,6 +14084,16 @@
+         "checksum": "sha256:686eca65f9fe16b47d9006aee1735b0f70c10e532e7e547c3be740e91ac4aaec",
+         "check_gpg": true
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "90.4",
++        "release": "1.el9",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-appstream-n9.1-20221015/Packages/redhat-logos-90.4-1.el9.aarch64.rpm",
++        "checksum": "sha256:80113c2978bf7cce2bc94f3c887ca77621ffec0d0ab38df730bed8c2461849f7",
++        "check_gpg": true
++      },
+       {
+         "name": "tpm2-tools",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_9-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_9-x86_64-edge_simplified_installer-boot.json
+index ef91594a5..d88a02e84 100644
+--- a/test/data/manifests/rhel_9-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-edge_simplified_installer-boot.json
+@@ -6070,6 +6070,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:5a43c616c3f06fbba7d45ea4cdd87ca58cc46102908e089a14604de5d55a0393",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:0dcd6624357942ada8b2ebf933ee47e11b1cbdc4eaee545519c43420adb6f46b",
+                     "options": {
+@@ -6326,6 +6334,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "Red Hat Enterprise Linux",
++                "version": "9.1"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=RHEL-9-1-0-BaseOS-x86_64",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -6367,7 +6406,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "RHEL-9-1-0-BaseOS-x86_64",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -6818,6 +6862,9 @@
+           "sha256:59b4bd1290c57f7cea8208def04d77e36ba3e66576043b17d3a52508ed704b1a": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-baseos-n9.1-20221015/Packages/fcoe-utils-1.0.34-0.git14ef0d2.el9.x86_64.rpm"
+           },
++          "sha256:5a43c616c3f06fbba7d45ea4cdd87ca58cc46102908e089a14604de5d55a0393": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-appstream-n9.1-20221015/Packages/redhat-logos-90.4-1.el9.x86_64.rpm"
++          },
+           "sha256:5a93097e08e847b113105a170132f74d91cf7143d2772fc73f78526ee32f32d7": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-baseos-n9.1-20221015/Packages/iwl6050-firmware-41.28.5.1-127.el9.noarch.rpm"
+           },
+@@ -14367,6 +14414,16 @@
+         "checksum": "sha256:686eca65f9fe16b47d9006aee1735b0f70c10e532e7e547c3be740e91ac4aaec",
+         "check_gpg": true
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "90.4",
++        "release": "1.el9",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-appstream-n9.1-20221015/Packages/redhat-logos-90.4-1.el9.x86_64.rpm",
++        "checksum": "sha256:5a43c616c3f06fbba7d45ea4cdd87ca58cc46102908e089a14604de5d55a0393",
++        "check_gpg": true
++      },
+       {
+         "name": "udisks2",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_90-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_90-aarch64-edge_simplified_installer-boot.json
+index 3efc462da..e01ae18f9 100644
+--- a/test/data/manifests/rhel_90-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-edge_simplified_installer-boot.json
+@@ -2570,6 +2570,9 @@
+                   {
+                     "id": "sha256:5c06d2a85bec668b8a9ba52b9d237770e37a2e4db014e7e8dc0cebaaf692af1e"
+                   },
++                  {
++                    "id": "sha256:1dd2260e41946bf3914f77de2264555ccf20d0b49e17ff75c1b561319735520b"
++                  },
+                   {
+                     "id": "sha256:339116c6415c611943a78d8d1aa15104cec30ad7c2e49014e97538cb946fc445"
+                   },
+@@ -3022,6 +3025,9 @@
+           "sha256:1d78714f790bbd6ba9ce602a40c27d94bcbdbf1a238d3f4f15de4a0503257640": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-baseos-n9.0-20220208/Packages/selinux-policy-34.1.23-1.el9.noarch.rpm"
+           },
++          "sha256:1dd2260e41946bf3914f77de2264555ccf20d0b49e17ff75c1b561319735520b": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-appstream-n9.0-20220208/Packages/redhat-logos-90.2-1.el9.aarch64.rpm"
++          },
+           "sha256:1dd3f265935e073215dffb6931dfb872d7cd94a6c08503a36b3ff8c8a8a25e34": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-baseos-n9.0-20220208/Packages/grub2-tools-extra-2.06-16.el9.aarch64.rpm"
+           },
+@@ -9756,6 +9762,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-appstream-n9.0-20220208/Packages/python3-policycoreutils-3.3-2.el9.noarch.rpm",
+         "checksum": "sha256:5c06d2a85bec668b8a9ba52b9d237770e37a2e4db014e7e8dc0cebaaf692af1e"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "90.2",
++        "release": "1.el9",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-appstream-n9.0-20220208/Packages/redhat-logos-90.2-1.el9.aarch64.rpm",
++        "checksum": "sha256:1dd2260e41946bf3914f77de2264555ccf20d0b49e17ff75c1b561319735520b"
++      },
+       {
+         "name": "tpm2-tools",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_90-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_90-x86_64-edge_simplified_installer-boot.json
+index 76e558aa5..18cfc1a0c 100644
+--- a/test/data/manifests/rhel_90-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-edge_simplified_installer-boot.json
+@@ -2628,6 +2628,9 @@
+                   {
+                     "id": "sha256:5c06d2a85bec668b8a9ba52b9d237770e37a2e4db014e7e8dc0cebaaf692af1e"
+                   },
++                  {
++                    "id": "sha256:49191fa272d3c16c219f1b27fd86bd085fa1ae3bac38946de40926b35773c4c4"
++                  },
+                   {
+                     "id": "sha256:4361d66a963fe8c62bd1a4e887a06fbe937faa70a7ac704a127021937b2e1b69"
+                   },
+@@ -2874,6 +2877,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "Red Hat Enterprise Linux",
++                "version": "9.0"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=RHEL-9-0-0-BaseOS-x86_64",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -2915,7 +2949,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "RHEL-9-0-0-BaseOS-x86_64",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -3258,6 +3297,9 @@
+           "sha256:4900de5fe7cf57df87d84d84a35e2031bb0668494c12da6d26c617f0d23f060d": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-baseos-n9.0-20220208/Packages/iwl2030-firmware-18.168.6.1-124.el9.noarch.rpm"
+           },
++          "sha256:49191fa272d3c16c219f1b27fd86bd085fa1ae3bac38946de40926b35773c4c4": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-appstream-n9.0-20220208/Packages/redhat-logos-90.2-1.el9.x86_64.rpm"
++          },
+           "sha256:49f7baeb53e07a4b9b5739e36932f17f014abb765b3fa6c0c0f8af6a8ebf4d9b": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-baseos-n9.0-20220208/Packages/attr-2.5.1-3.el9.x86_64.rpm"
+           },
+@@ -9992,6 +10034,15 @@
+         "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-appstream-n9.0-20220208/Packages/python3-policycoreutils-3.3-2.el9.noarch.rpm",
+         "checksum": "sha256:5c06d2a85bec668b8a9ba52b9d237770e37a2e4db014e7e8dc0cebaaf692af1e"
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "90.2",
++        "release": "1.el9",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-appstream-n9.0-20220208/Packages/redhat-logos-90.2-1.el9.x86_64.rpm",
++        "checksum": "sha256:49191fa272d3c16c219f1b27fd86bd085fa1ae3bac38946de40926b35773c4c4"
++      },
+       {
+         "name": "udisks2",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_91-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_91-aarch64-edge_simplified_installer-boot.json
+index 3b749716d..20527d8a9 100644
+--- a/test/data/manifests/rhel_91-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-edge_simplified_installer-boot.json
+@@ -5943,6 +5943,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:80113c2978bf7cce2bc94f3c887ca77621ffec0d0ab38df730bed8c2461849f7",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:7ccc4a5fa203fcbac963a392d29cd3bcbe82fb762833e8d406b1f11dc8451639",
+                     "options": {
+@@ -6896,6 +6904,9 @@
+           "sha256:7e9179402556fa825fcfb16e873eb67b2b6c810149162e83ee771f997fd8f2ec": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-baseos-n9.1-20221015/Packages/tar-1.34-5.el9.aarch64.rpm"
+           },
++          "sha256:80113c2978bf7cce2bc94f3c887ca77621ffec0d0ab38df730bed8c2461849f7": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-appstream-n9.1-20221015/Packages/redhat-logos-90.4-1.el9.aarch64.rpm"
++          },
+           "sha256:8021ebcd73fcdfb0fed4e9077d8483d1a2dfa95acc1bd823ecd77e49ac3ddb27": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-baseos-n9.1-20221015/Packages/libbasicobjects-0.1.1-53.el9.aarch64.rpm"
+           },
+@@ -14073,6 +14084,16 @@
+         "checksum": "sha256:686eca65f9fe16b47d9006aee1735b0f70c10e532e7e547c3be740e91ac4aaec",
+         "check_gpg": true
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "90.4",
++        "release": "1.el9",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-appstream-n9.1-20221015/Packages/redhat-logos-90.4-1.el9.aarch64.rpm",
++        "checksum": "sha256:80113c2978bf7cce2bc94f3c887ca77621ffec0d0ab38df730bed8c2461849f7",
++        "check_gpg": true
++      },
+       {
+         "name": "tpm2-tools",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_91-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_91-x86_64-edge_simplified_installer-boot.json
+index 52ec164de..bc875b60a 100644
+--- a/test/data/manifests/rhel_91-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-edge_simplified_installer-boot.json
+@@ -6070,6 +6070,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:5a43c616c3f06fbba7d45ea4cdd87ca58cc46102908e089a14604de5d55a0393",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:0dcd6624357942ada8b2ebf933ee47e11b1cbdc4eaee545519c43420adb6f46b",
+                     "options": {
+@@ -6326,6 +6334,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "Red Hat Enterprise Linux",
++                "version": "9.1"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=RHEL-9-1-0-BaseOS-x86_64",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -6367,7 +6406,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "RHEL-9-1-0-BaseOS-x86_64",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -6818,6 +6862,9 @@
+           "sha256:59b4bd1290c57f7cea8208def04d77e36ba3e66576043b17d3a52508ed704b1a": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-baseos-n9.1-20221015/Packages/fcoe-utils-1.0.34-0.git14ef0d2.el9.x86_64.rpm"
+           },
++          "sha256:5a43c616c3f06fbba7d45ea4cdd87ca58cc46102908e089a14604de5d55a0393": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-appstream-n9.1-20221015/Packages/redhat-logos-90.4-1.el9.x86_64.rpm"
++          },
+           "sha256:5a93097e08e847b113105a170132f74d91cf7143d2772fc73f78526ee32f32d7": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-baseos-n9.1-20221015/Packages/iwl6050-firmware-41.28.5.1-127.el9.noarch.rpm"
+           },
+@@ -14367,6 +14414,16 @@
+         "checksum": "sha256:686eca65f9fe16b47d9006aee1735b0f70c10e532e7e547c3be740e91ac4aaec",
+         "check_gpg": true
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "90.4",
++        "release": "1.el9",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-appstream-n9.1-20221015/Packages/redhat-logos-90.4-1.el9.x86_64.rpm",
++        "checksum": "sha256:5a43c616c3f06fbba7d45ea4cdd87ca58cc46102908e089a14604de5d55a0393",
++        "check_gpg": true
++      },
+       {
+         "name": "udisks2",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_92-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_92-aarch64-edge_simplified_installer-boot.json
+index 1e4d75d87..e20501676 100644
+--- a/test/data/manifests/rhel_92-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-edge_simplified_installer-boot.json
+@@ -5892,6 +5892,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:80113c2978bf7cce2bc94f3c887ca77621ffec0d0ab38df730bed8c2461849f7",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:f78a2a07073e949a115b2d95a6119eb6547b992c00c7af9af6887709030e4af4",
+                     "options": {
+@@ -6782,6 +6790,9 @@
+           "sha256:7f5398b37571d6eead55c4c1f793e5934c00847a709dbe844b21a633a59fb684": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-baseos-n9.2-20230101/Packages/device-mapper-libs-1.02.187-3.el9.aarch64.rpm"
+           },
++          "sha256:80113c2978bf7cce2bc94f3c887ca77621ffec0d0ab38df730bed8c2461849f7": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-appstream-n9.2-20230101/Packages/redhat-logos-90.4-1.el9.aarch64.rpm"
++          },
+           "sha256:8021ebcd73fcdfb0fed4e9077d8483d1a2dfa95acc1bd823ecd77e49ac3ddb27": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-baseos-n9.2-20230101/Packages/libbasicobjects-0.1.1-53.el9.aarch64.rpm"
+           },
+@@ -13927,6 +13938,16 @@
+         "checksum": "sha256:686eca65f9fe16b47d9006aee1735b0f70c10e532e7e547c3be740e91ac4aaec",
+         "check_gpg": true
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "90.4",
++        "release": "1.el9",
++        "arch": "aarch64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-aarch64-appstream-n9.2-20230101/Packages/redhat-logos-90.4-1.el9.aarch64.rpm",
++        "checksum": "sha256:80113c2978bf7cce2bc94f3c887ca77621ffec0d0ab38df730bed8c2461849f7",
++        "check_gpg": true
++      },
+       {
+         "name": "tpm2-tools",
+         "epoch": 0,
+diff --git a/test/data/manifests/rhel_92-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_92-x86_64-edge_simplified_installer-boot.json
+index 090db489f..aa3b51094 100644
+--- a/test/data/manifests/rhel_92-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-edge_simplified_installer-boot.json
+@@ -6019,6 +6019,14 @@
+                       }
+                     }
+                   },
++                  {
++                    "id": "sha256:5a43c616c3f06fbba7d45ea4cdd87ca58cc46102908e089a14604de5d55a0393",
++                    "options": {
++                      "metadata": {
++                        "rpm.check_gpg": true
++                      }
++                    }
++                  },
+                   {
+                     "id": "sha256:17aab3ef99a2590ca905c28421572ae2ea378a634a157b312ec9a9e83e405a54",
+                     "options": {
+@@ -6275,6 +6283,37 @@
+               ]
+             }
+           },
++          {
++            "type": "org.osbuild.isolinux",
++            "inputs": {
++              "data": {
++                "type": "org.osbuild.tree",
++                "origin": "org.osbuild.pipeline",
++                "references": [
++                  "name:coi-tree"
++                ]
++              }
++            },
++            "options": {
++              "product": {
++                "name": "Red Hat Enterprise Linux",
++                "version": "9.2"
++              },
++              "kernel": {
++                "dir": "/images/pxeboot",
++                "opts": [
++                  "rd.neednet=1",
++                  "coreos.inst.crypt_root=1",
++                  "coreos.inst.isoroot=RHEL-9-2-0-BaseOS-x86_64",
++                  "coreos.inst.install_dev=/dev/vda",
++                  "coreos.inst.image_file=/run/media/iso/image.raw.xz",
++                  "coreos.inst.insecure",
++                  "fdo.manufacturing_server_url=https;//fdo.example.com",
++                  "fdo.diun_pub_key_insecure=true"
++                ]
++              }
++            }
++          },
+           {
+             "type": "org.osbuild.copy",
+             "inputs": {
+@@ -6316,7 +6355,12 @@
+               "filename": "simplified-installer.iso",
+               "volid": "RHEL-9-2-0-BaseOS-x86_64",
+               "sysid": "LINUX",
++              "boot": {
++                "image": "isolinux/isolinux.bin",
++                "catalog": "isolinux/boot.cat"
++              },
+               "efi": "images/efiboot.img",
++              "isohybridmbr": "/usr/share/syslinux/isohdpfx.bin",
+               "isolevel": 3
+             }
+           },
+@@ -6734,6 +6778,9 @@
+           "sha256:59c77776b489ea57a9f954d90a2a6d9089e43e16fd2277859f60f3b8d19b6262": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-baseos-n9.2-20230101/Packages/glibc-gconv-extra-2.34-54.el9.x86_64.rpm"
+           },
++          "sha256:5a43c616c3f06fbba7d45ea4cdd87ca58cc46102908e089a14604de5d55a0393": {
++            "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-appstream-n9.2-20230101/Packages/redhat-logos-90.4-1.el9.x86_64.rpm"
++          },
+           "sha256:5beb750d1ccfb8fbdfd33882ea02b99edf03034ea3cef7821dfc12afeccef9f9": {
+             "url": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-baseos-n9.2-20230101/Packages/iputils-20210202-8.el9.x86_64.rpm"
+           },
+@@ -14221,6 +14268,16 @@
+         "checksum": "sha256:686eca65f9fe16b47d9006aee1735b0f70c10e532e7e547c3be740e91ac4aaec",
+         "check_gpg": true
+       },
++      {
++        "name": "redhat-logos",
++        "epoch": 0,
++        "version": "90.4",
++        "release": "1.el9",
++        "arch": "x86_64",
++        "remote_location": "https://rpmrepo.osbuild.org/v2/mirror/rhvpn/el9/el9-x86_64-appstream-n9.2-20230101/Packages/redhat-logos-90.4-1.el9.x86_64.rpm",
++        "checksum": "sha256:5a43c616c3f06fbba7d45ea4cdd87ca58cc46102908e089a14604de5d55a0393",
++        "check_gpg": true
++      },
+       {
+         "name": "udisks2",
+         "epoch": 0,
+-- 
+2.40.0
+

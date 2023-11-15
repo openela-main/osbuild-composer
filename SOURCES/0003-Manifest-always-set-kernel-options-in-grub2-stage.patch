@@ -1,0 +1,2655 @@
+From 85e4f4f8580fb64b7e03f65db330b170c4c7d6ec Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Tom=C3=A1=C5=A1=20Hozza?= <thozza@redhat.com>
+Date: Thu, 23 Mar 2023 10:31:33 +0100
+Subject: [PATCH 3/3] Manifest: always set kernel options in grub2 stage
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+It turned out that when we stopped setting the kernel options in grubenv
+file, we also stopped setting them in /etc/default/grub under
+`GRUB_CMDLINE_LINUX`. This file is used by grub2-mkconfig when
+generating grub configuration.
+
+10_linux script executed by grub2-mkconfig recently started to overwrite
+the /etc/kernel/cmdline, if its timestamp is older than the timestamp of
+/etc/default/grub [1]. As a result, all kernel options were wiped out from
+/etc/kernel/cmdline.
+
+Make sure that we always set the `KernelOptions` in the grub2 stage
+options, even if the `WriteCmdLine` is set to `false`.
+
+In addition, unify the way we concatenate kernel options set in the
+grub2 stage options. Some pipeline implementations were previously using
+space, other were using comma. Space is now used everywhere.
+
+Regenerate all affected image manifests.
+
+[1] https://src.fedoraproject.org/rpms/grub2/c/fc76aed5333f56dd05400521a35b944a5df52ebc
+
+Signed-off-by: Tomáš Hozza <thozza@redhat.com>
+---
+ internal/manifest/commit_deployment.go              |  2 +-
+ internal/manifest/os.go                             | 13 ++++++++++---
+ internal/osbuild/grub2_stage.go                     |  8 ++++++++
+ .../centos_8-aarch64-edge_raw_image-boot.json       |  2 +-
+ ...os_8-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../centos_8-x86_64-edge_raw_image-boot.json        |  2 +-
+ ...tos_8-x86_64-edge_simplified_installer-boot.json |  2 +-
+ test/data/manifests/centos_9-aarch64-ami-boot.json  |  1 +
+ .../centos_9-aarch64-edge_raw_image-boot.json       |  2 +-
+ ...os_9-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../manifests/centos_9-aarch64-openstack-boot.json  |  1 +
+ .../data/manifests/centos_9-aarch64-qcow2-boot.json |  1 +
+ .../centos_9-aarch64-qcow2_customize-boot.json      |  1 +
+ test/data/manifests/centos_9-aarch64-vhd-boot.json  |  1 +
+ .../data/manifests/centos_9-ppc64le-qcow2-boot.json |  1 +
+ .../centos_9-ppc64le-qcow2_customize-boot.json      |  1 +
+ test/data/manifests/centos_9-x86_64-ami-boot.json   |  1 +
+ .../centos_9-x86_64-edge_raw_image-boot.json        |  2 +-
+ ...tos_9-x86_64-edge_simplified_installer-boot.json |  2 +-
+ test/data/manifests/centos_9-x86_64-gce-boot.json   |  1 +
+ test/data/manifests/centos_9-x86_64-oci-boot.json   |  1 +
+ .../manifests/centos_9-x86_64-openstack-boot.json   |  1 +
+ test/data/manifests/centos_9-x86_64-qcow2-boot.json |  1 +
+ .../centos_9-x86_64-qcow2_customize-boot.json       |  1 +
+ test/data/manifests/centos_9-x86_64-vhd-boot.json   |  1 +
+ test/data/manifests/centos_9-x86_64-vmdk-boot.json  |  1 +
+ test/data/manifests/fedora_36-aarch64-ami-boot.json |  1 +
+ .../fedora_36-aarch64-iot_raw_image-boot.json       |  2 +-
+ .../fedora_36-aarch64-minimal_raw-boot.json         |  1 +
+ test/data/manifests/fedora_36-aarch64-oci-boot.json |  1 +
+ .../manifests/fedora_36-aarch64-openstack-boot.json |  1 +
+ .../manifests/fedora_36-aarch64-qcow2-boot.json     |  1 +
+ .../fedora_36-aarch64-qcow2_customize-boot.json     |  1 +
+ test/data/manifests/fedora_36-x86_64-ami-boot.json  |  1 +
+ .../fedora_36-x86_64-iot_raw_image-boot.json        |  2 +-
+ .../fedora_36-x86_64-minimal_raw-boot.json          |  1 +
+ test/data/manifests/fedora_36-x86_64-oci-boot.json  |  1 +
+ .../manifests/fedora_36-x86_64-openstack-boot.json  |  1 +
+ .../data/manifests/fedora_36-x86_64-qcow2-boot.json |  1 +
+ .../fedora_36-x86_64-qcow2_customize-boot.json      |  1 +
+ test/data/manifests/fedora_36-x86_64-vhd-boot.json  |  1 +
+ test/data/manifests/fedora_36-x86_64-vmdk-boot.json |  1 +
+ test/data/manifests/fedora_37-aarch64-ami-boot.json |  1 +
+ .../fedora_37-aarch64-iot_raw_image-boot.json       |  2 +-
+ .../fedora_37-aarch64-minimal_raw-boot.json         |  1 +
+ test/data/manifests/fedora_37-aarch64-oci-boot.json |  1 +
+ .../manifests/fedora_37-aarch64-openstack-boot.json |  1 +
+ .../manifests/fedora_37-aarch64-qcow2-boot.json     |  1 +
+ .../fedora_37-aarch64-qcow2_customize-boot.json     |  1 +
+ test/data/manifests/fedora_37-x86_64-ami-boot.json  |  1 +
+ .../fedora_37-x86_64-iot_raw_image-boot.json        |  2 +-
+ .../fedora_37-x86_64-minimal_raw-boot.json          |  1 +
+ test/data/manifests/fedora_37-x86_64-oci-boot.json  |  1 +
+ .../manifests/fedora_37-x86_64-openstack-boot.json  |  1 +
+ .../data/manifests/fedora_37-x86_64-qcow2-boot.json |  1 +
+ .../fedora_37-x86_64-qcow2_customize-boot.json      |  1 +
+ test/data/manifests/fedora_37-x86_64-vhd-boot.json  |  1 +
+ test/data/manifests/fedora_37-x86_64-vmdk-boot.json |  1 +
+ test/data/manifests/fedora_38-aarch64-ami-boot.json |  1 +
+ .../fedora_38-aarch64-iot_raw_image-boot.json       |  2 +-
+ .../fedora_38-aarch64-minimal_raw-boot.json         |  1 +
+ test/data/manifests/fedora_38-aarch64-oci-boot.json |  1 +
+ .../manifests/fedora_38-aarch64-openstack-boot.json |  1 +
+ .../manifests/fedora_38-aarch64-qcow2-boot.json     |  1 +
+ .../fedora_38-aarch64-qcow2_customize-boot.json     |  1 +
+ test/data/manifests/fedora_38-x86_64-ami-boot.json  |  1 +
+ .../fedora_38-x86_64-iot_raw_image-boot.json        |  2 +-
+ .../fedora_38-x86_64-minimal_raw-boot.json          |  1 +
+ test/data/manifests/fedora_38-x86_64-oci-boot.json  |  1 +
+ .../manifests/fedora_38-x86_64-openstack-boot.json  |  1 +
+ .../data/manifests/fedora_38-x86_64-qcow2-boot.json |  1 +
+ .../fedora_38-x86_64-qcow2_customize-boot.json      |  1 +
+ test/data/manifests/fedora_38-x86_64-vhd-boot.json  |  1 +
+ test/data/manifests/fedora_38-x86_64-vmdk-boot.json |  1 +
+ .../rhel_8-aarch64-edge_raw_image-boot.json         |  2 +-
+ ...el_8-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../rhel_8-x86_64-edge_raw_image-boot.json          |  2 +-
+ ...hel_8-x86_64-edge_simplified_installer-boot.json |  2 +-
+ .../rhel_86-aarch64-edge_raw_image-boot.json        |  2 +-
+ ...l_86-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../rhel_86-x86_64-edge_raw_image-boot.json         |  2 +-
+ ...el_86-x86_64-edge_simplified_installer-boot.json |  2 +-
+ .../rhel_87-aarch64-edge_raw_image-boot.json        |  2 +-
+ ...l_87-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../rhel_87-x86_64-edge_raw_image-boot.json         |  2 +-
+ ...el_87-x86_64-edge_simplified_installer-boot.json |  2 +-
+ .../rhel_88-aarch64-edge_raw_image-boot.json        |  2 +-
+ ...l_88-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../rhel_88-x86_64-edge_raw_image-boot.json         |  2 +-
+ ...el_88-x86_64-edge_simplified_installer-boot.json |  2 +-
+ test/data/manifests/rhel_9-aarch64-ami-boot.json    |  1 +
+ .../manifests/rhel_9-aarch64-azure_rhui-boot.json   |  1 +
+ test/data/manifests/rhel_9-aarch64-ec2-boot.json    |  1 +
+ .../rhel_9-aarch64-edge_raw_image-boot.json         |  2 +-
+ ...el_9-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../manifests/rhel_9-aarch64-openstack-boot.json    |  1 +
+ test/data/manifests/rhel_9-aarch64-qcow2-boot.json  |  1 +
+ .../rhel_9-aarch64-qcow2_customize-boot.json        |  1 +
+ test/data/manifests/rhel_9-aarch64-vhd-boot.json    |  1 +
+ test/data/manifests/rhel_9-ppc64le-qcow2-boot.json  |  1 +
+ .../rhel_9-ppc64le-qcow2_customize-boot.json        |  1 +
+ test/data/manifests/rhel_9-x86_64-ami-boot.json     |  1 +
+ .../manifests/rhel_9-x86_64-azure_rhui-boot.json    |  1 +
+ test/data/manifests/rhel_9-x86_64-ec2-boot.json     |  1 +
+ test/data/manifests/rhel_9-x86_64-ec2_ha-boot.json  |  1 +
+ test/data/manifests/rhel_9-x86_64-ec2_sap-boot.json |  1 +
+ .../rhel_9-x86_64-edge_raw_image-boot.json          |  2 +-
+ ...hel_9-x86_64-edge_simplified_installer-boot.json |  2 +-
+ test/data/manifests/rhel_9-x86_64-gce-boot.json     |  1 +
+ .../data/manifests/rhel_9-x86_64-gce_rhui-boot.json |  1 +
+ test/data/manifests/rhel_9-x86_64-oci-boot.json     |  1 +
+ .../manifests/rhel_9-x86_64-openstack-boot.json     |  1 +
+ test/data/manifests/rhel_9-x86_64-qcow2-boot.json   |  1 +
+ .../rhel_9-x86_64-qcow2_customize-boot.json         |  1 +
+ test/data/manifests/rhel_9-x86_64-vhd-boot.json     |  1 +
+ test/data/manifests/rhel_9-x86_64-vmdk-boot.json    |  1 +
+ test/data/manifests/rhel_90-aarch64-ami-boot.json   |  1 +
+ .../manifests/rhel_90-aarch64-azure_rhui-boot.json  |  1 +
+ test/data/manifests/rhel_90-aarch64-ec2-boot.json   |  1 +
+ .../rhel_90-aarch64-edge_raw_image-boot.json        |  2 +-
+ ...l_90-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../manifests/rhel_90-aarch64-openstack-boot.json   |  1 +
+ test/data/manifests/rhel_90-aarch64-qcow2-boot.json |  1 +
+ .../rhel_90-aarch64-qcow2_customize-boot.json       |  1 +
+ test/data/manifests/rhel_90-aarch64-vhd-boot.json   |  1 +
+ test/data/manifests/rhel_90-ppc64le-qcow2-boot.json |  1 +
+ .../rhel_90-ppc64le-qcow2_customize-boot.json       |  1 +
+ test/data/manifests/rhel_90-x86_64-ami-boot.json    |  1 +
+ .../manifests/rhel_90-x86_64-azure_rhui-boot.json   |  1 +
+ test/data/manifests/rhel_90-x86_64-ec2-boot.json    |  1 +
+ test/data/manifests/rhel_90-x86_64-ec2_ha-boot.json |  1 +
+ .../data/manifests/rhel_90-x86_64-ec2_sap-boot.json |  1 +
+ .../rhel_90-x86_64-edge_raw_image-boot.json         |  2 +-
+ ...el_90-x86_64-edge_simplified_installer-boot.json |  2 +-
+ test/data/manifests/rhel_90-x86_64-gce-boot.json    |  1 +
+ .../manifests/rhel_90-x86_64-gce_rhui-boot.json     |  1 +
+ test/data/manifests/rhel_90-x86_64-oci-boot.json    |  1 +
+ .../manifests/rhel_90-x86_64-openstack-boot.json    |  1 +
+ test/data/manifests/rhel_90-x86_64-qcow2-boot.json  |  1 +
+ .../rhel_90-x86_64-qcow2_customize-boot.json        |  1 +
+ test/data/manifests/rhel_90-x86_64-vhd-boot.json    |  1 +
+ test/data/manifests/rhel_90-x86_64-vmdk-boot.json   |  1 +
+ test/data/manifests/rhel_91-aarch64-ami-boot.json   |  1 +
+ .../manifests/rhel_91-aarch64-azure_rhui-boot.json  |  1 +
+ test/data/manifests/rhel_91-aarch64-ec2-boot.json   |  1 +
+ .../rhel_91-aarch64-edge_raw_image-boot.json        |  2 +-
+ ...l_91-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../manifests/rhel_91-aarch64-openstack-boot.json   |  1 +
+ test/data/manifests/rhel_91-aarch64-qcow2-boot.json |  1 +
+ .../rhel_91-aarch64-qcow2_customize-boot.json       |  1 +
+ test/data/manifests/rhel_91-aarch64-vhd-boot.json   |  1 +
+ test/data/manifests/rhel_91-ppc64le-qcow2-boot.json |  1 +
+ .../rhel_91-ppc64le-qcow2_customize-boot.json       |  1 +
+ test/data/manifests/rhel_91-x86_64-ami-boot.json    |  1 +
+ .../manifests/rhel_91-x86_64-azure_rhui-boot.json   |  1 +
+ test/data/manifests/rhel_91-x86_64-ec2-boot.json    |  1 +
+ test/data/manifests/rhel_91-x86_64-ec2_ha-boot.json |  1 +
+ .../data/manifests/rhel_91-x86_64-ec2_sap-boot.json |  1 +
+ .../rhel_91-x86_64-edge_raw_image-boot.json         |  2 +-
+ ...el_91-x86_64-edge_simplified_installer-boot.json |  2 +-
+ test/data/manifests/rhel_91-x86_64-gce-boot.json    |  1 +
+ .../manifests/rhel_91-x86_64-gce_rhui-boot.json     |  1 +
+ test/data/manifests/rhel_91-x86_64-oci-boot.json    |  1 +
+ .../manifests/rhel_91-x86_64-openstack-boot.json    |  1 +
+ test/data/manifests/rhel_91-x86_64-qcow2-boot.json  |  1 +
+ .../rhel_91-x86_64-qcow2_customize-boot.json        |  1 +
+ test/data/manifests/rhel_91-x86_64-vhd-boot.json    |  1 +
+ test/data/manifests/rhel_91-x86_64-vmdk-boot.json   |  1 +
+ test/data/manifests/rhel_92-aarch64-ami-boot.json   |  1 +
+ .../manifests/rhel_92-aarch64-azure_rhui-boot.json  |  1 +
+ test/data/manifests/rhel_92-aarch64-ec2-boot.json   |  1 +
+ .../rhel_92-aarch64-edge_raw_image-boot.json        |  2 +-
+ ...l_92-aarch64-edge_simplified_installer-boot.json |  2 +-
+ .../manifests/rhel_92-aarch64-openstack-boot.json   |  1 +
+ test/data/manifests/rhel_92-aarch64-qcow2-boot.json |  1 +
+ .../rhel_92-aarch64-qcow2_customize-boot.json       |  1 +
+ test/data/manifests/rhel_92-aarch64-vhd-boot.json   |  1 +
+ test/data/manifests/rhel_92-ppc64le-qcow2-boot.json |  1 +
+ .../rhel_92-ppc64le-qcow2_customize-boot.json       |  1 +
+ test/data/manifests/rhel_92-x86_64-ami-boot.json    |  1 +
+ .../manifests/rhel_92-x86_64-azure_rhui-boot.json   |  1 +
+ test/data/manifests/rhel_92-x86_64-ec2-boot.json    |  1 +
+ test/data/manifests/rhel_92-x86_64-ec2_ha-boot.json |  1 +
+ .../data/manifests/rhel_92-x86_64-ec2_sap-boot.json |  1 +
+ .../rhel_92-x86_64-edge_raw_image-boot.json         |  2 +-
+ ...el_92-x86_64-edge_simplified_installer-boot.json |  2 +-
+ test/data/manifests/rhel_92-x86_64-gce-boot.json    |  1 +
+ .../manifests/rhel_92-x86_64-gce_rhui-boot.json     |  1 +
+ test/data/manifests/rhel_92-x86_64-oci-boot.json    |  1 +
+ .../manifests/rhel_92-x86_64-openstack-boot.json    |  1 +
+ test/data/manifests/rhel_92-x86_64-qcow2-boot.json  |  1 +
+ .../rhel_92-x86_64-qcow2_customize-boot.json        |  1 +
+ test/data/manifests/rhel_92-x86_64-vhd-boot.json    |  1 +
+ test/data/manifests/rhel_92-x86_64-vmdk-boot.json   |  1 +
+ 194 files changed, 210 insertions(+), 50 deletions(-)
+
+diff --git a/internal/manifest/commit_deployment.go b/internal/manifest/commit_deployment.go
+index 71c535176..da129a135 100644
+--- a/internal/manifest/commit_deployment.go
++++ b/internal/manifest/commit_deployment.go
+@@ -238,6 +238,7 @@ func (p *OSTreeDeployment) serialize() osbuild.Pipeline {
+ 	}
+ 
+ 	grubOptions := osbuild.NewGrub2StageOptionsUnified(p.PartitionTable,
++		strings.Join(kernelOpts, " "),
+ 		"",
+ 		p.platform.GetUEFIVendor() != "",
+ 		p.platform.GetBIOSPlatform(),
+@@ -249,7 +250,6 @@ func (p *OSTreeDeployment) serialize() osbuild.Pipeline {
+ 		Timeout:        1,
+ 		TerminalOutput: []string{"console"},
+ 	}
+-	grubOptions.KernelOptions = strings.Join(kernelOpts, ",")
+ 	bootloader := osbuild.NewGRUB2Stage(grubOptions)
+ 	bootloader.MountOSTree(p.osName, p.commit.Ref, 0)
+ 	pipeline.AddStage(bootloader)
+diff --git a/internal/manifest/os.go b/internal/manifest/os.go
+index c73c7071c..6f0f50209 100644
+--- a/internal/manifest/os.go
++++ b/internal/manifest/os.go
+@@ -52,8 +52,15 @@ type OSCustomizations struct {
+ 	KernelOptionsAppend []string
+ 
+ 	// KernelOptionsBootloader controls whether kernel command line options
+-	// should be specified in the bootloader configuration. Otherwise they are
+-	// specified in /etc/kernel/cmdline (default).
++	// should be specified in the bootloader grubenv configuration. Otherwise
++	// they are specified in /etc/kernel/cmdline (default).
++	//
++	// NB: The kernel options need to be still specified in /etc/default/grub
++	// under the GRUB_CMDLINE_LINUX variable. The reason is that it is used by
++	// the 10_linux script executed by grub2-mkconfig to override the kernel
++	// options in /etc/kernel/cmdline if the file has older timestamp than
++	// /etc/default/grub.
++	//
+ 	// This should only be used for RHEL 8 and CentOS 8 images that use grub
+ 	// (non s390x).  Newer releases (9+) should keep this disabled.
+ 	KernelOptionsBootloader bool
+@@ -558,6 +565,7 @@ func (p *OS) serialize() osbuild.Pipeline {
+ 				)
+ 			} else {
+ 				options := osbuild.NewGrub2StageOptionsUnified(pt,
++					strings.Join(kernelOptions, " "),
+ 					p.kernelVer,
+ 					p.platform.GetUEFIVendor() != "",
+ 					p.platform.GetBIOSPlatform(),
+@@ -577,7 +585,6 @@ func (p *OS) serialize() osbuild.Pipeline {
+ 					if options.UEFI != nil {
+ 						options.UEFI.Unified = false
+ 					}
+-					options.KernelOptions = strings.Join(kernelOptions, " ")
+ 				}
+ 				bootloader = osbuild.NewGRUB2Stage(options)
+ 			}
+diff --git a/internal/osbuild/grub2_stage.go b/internal/osbuild/grub2_stage.go
+index 8e233b271..bebee052b 100644
+--- a/internal/osbuild/grub2_stage.go
++++ b/internal/osbuild/grub2_stage.go
+@@ -101,6 +101,7 @@ func NewGrub2StageOptions(pt *disk.PartitionTable,
+ }
+ 
+ func NewGrub2StageOptionsUnified(pt *disk.PartitionTable,
++	kernelOptions string,
+ 	kernelVer string,
+ 	uefi bool,
+ 	legacy string,
+@@ -112,9 +113,16 @@ func NewGrub2StageOptionsUnified(pt *disk.PartitionTable,
+ 		panic("root filesystem must be defined for grub2 stage, this is a programming error")
+ 	}
+ 
++	// NB: We need to set the kernel options regardless of whether we are
++	// writing the command line to grubenv or not. This is because the kernel
++	// options are also written to /etc/default/grub under the GRUB_CMDLINE_LINUX
++	// variable. This is used by the 10_linux script executed by grub2-mkconfig
++	// to override the kernel options in /etc/kernel/cmdline if the file has
++	// older timestamp than /etc/default/grub.
+ 	stageOptions := GRUB2StageOptions{
+ 		RootFilesystemUUID: uuid.MustParse(rootFs.GetFSSpec().UUID),
+ 		Legacy:             legacy,
++		KernelOptions:      kernelOptions,
+ 		WriteCmdLine:       common.ToPtr(false),
+ 	}
+ 
+diff --git a/test/data/manifests/centos_8-aarch64-edge_raw_image-boot.json b/test/data/manifests/centos_8-aarch64-edge_raw_image-boot.json
+index 7631ac963..d97a70c44 100644
+--- a/test/data/manifests/centos_8-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/centos_8-aarch64-edge_raw_image-boot.json
+@@ -2259,7 +2259,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "centos",
+                 "install": true,
+diff --git a/test/data/manifests/centos_8-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/centos_8-aarch64-edge_simplified_installer-boot.json
+index 5c980e587..fffd37ee3 100644
+--- a/test/data/manifests/centos_8-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/centos_8-aarch64-edge_simplified_installer-boot.json
+@@ -2611,7 +2611,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "centos",
+                 "install": true,
+diff --git a/test/data/manifests/centos_8-x86_64-edge_raw_image-boot.json b/test/data/manifests/centos_8-x86_64-edge_raw_image-boot.json
+index 346ffbfa0..8eb1fe81b 100644
+--- a/test/data/manifests/centos_8-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/centos_8-x86_64-edge_raw_image-boot.json
+@@ -2371,7 +2371,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "centos",
+diff --git a/test/data/manifests/centos_8-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/centos_8-x86_64-edge_simplified_installer-boot.json
+index bbd8a11e2..d0ee7deac 100644
+--- a/test/data/manifests/centos_8-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/centos_8-x86_64-edge_simplified_installer-boot.json
+@@ -2659,7 +2659,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "centos",
+                 "install": true,
+diff --git a/test/data/manifests/centos_9-aarch64-ami-boot.json b/test/data/manifests/centos_9-aarch64-ami-boot.json
+index 61511dd2b..d04a83034 100644
+--- a/test/data/manifests/centos_9-aarch64-ami-boot.json
++++ b/test/data/manifests/centos_9-aarch64-ami-boot.json
+@@ -4421,6 +4421,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 iommu.strict=0",
+               "uefi": {
+                 "vendor": "centos",
+                 "unified": true
+diff --git a/test/data/manifests/centos_9-aarch64-edge_raw_image-boot.json b/test/data/manifests/centos_9-aarch64-edge_raw_image-boot.json
+index 3d25bdb81..b157d4935 100644
+--- a/test/data/manifests/centos_9-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/centos_9-aarch64-edge_raw_image-boot.json
+@@ -2336,7 +2336,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4,rw,coreos.no_persist_ip,ignition.platform.id=metal,$ignition_firstboot",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4 rw coreos.no_persist_ip ignition.platform.id=metal $ignition_firstboot",
+               "uefi": {
+                 "vendor": "centos",
+                 "install": true,
+diff --git a/test/data/manifests/centos_9-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/centos_9-aarch64-edge_simplified_installer-boot.json
+index fd61b1dd6..f922bc01a 100644
+--- a/test/data/manifests/centos_9-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/centos_9-aarch64-edge_simplified_installer-boot.json
+@@ -2720,7 +2720,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4,rw,coreos.no_persist_ip,ignition.platform.id=metal,$ignition_firstboot",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4 rw coreos.no_persist_ip ignition.platform.id=metal $ignition_firstboot",
+               "uefi": {
+                 "vendor": "centos",
+                 "install": true,
+diff --git a/test/data/manifests/centos_9-aarch64-openstack-boot.json b/test/data/manifests/centos_9-aarch64-openstack-boot.json
+index 2c839da77..fa0fd40ab 100644
+--- a/test/data/manifests/centos_9-aarch64-openstack-boot.json
++++ b/test/data/manifests/centos_9-aarch64-openstack-boot.json
+@@ -4446,6 +4446,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "uefi": {
+                 "vendor": "centos",
+                 "unified": true
+diff --git a/test/data/manifests/centos_9-aarch64-qcow2-boot.json b/test/data/manifests/centos_9-aarch64-qcow2-boot.json
+index 659f3969d..f7211262c 100644
+--- a/test/data/manifests/centos_9-aarch64-qcow2-boot.json
++++ b/test/data/manifests/centos_9-aarch64-qcow2-boot.json
+@@ -4510,6 +4510,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "uefi": {
+                 "vendor": "centos",
+                 "unified": true
+diff --git a/test/data/manifests/centos_9-aarch64-qcow2_customize-boot.json b/test/data/manifests/centos_9-aarch64-qcow2_customize-boot.json
+index 7be4e90eb..fbd5e2c33 100644
+--- a/test/data/manifests/centos_9-aarch64-qcow2_customize-boot.json
++++ b/test/data/manifests/centos_9-aarch64-qcow2_customize-boot.json
+@@ -4867,6 +4867,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "uefi": {
+                 "vendor": "centos",
+                 "unified": true
+diff --git a/test/data/manifests/centos_9-aarch64-vhd-boot.json b/test/data/manifests/centos_9-aarch64-vhd-boot.json
+index d013221a1..7e915a96c 100644
+--- a/test/data/manifests/centos_9-aarch64-vhd-boot.json
++++ b/test/data/manifests/centos_9-aarch64-vhd-boot.json
+@@ -6059,6 +6059,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "uefi": {
+                 "vendor": "centos",
+                 "unified": true
+diff --git a/test/data/manifests/centos_9-ppc64le-qcow2-boot.json b/test/data/manifests/centos_9-ppc64le-qcow2-boot.json
+index 02caf9723..b9bf9b8fa 100644
+--- a/test/data/manifests/centos_9-ppc64le-qcow2-boot.json
++++ b/test/data/manifests/centos_9-ppc64le-qcow2-boot.json
+@@ -5151,6 +5151,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-200.el9.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/centos_9-ppc64le-qcow2_customize-boot.json b/test/data/manifests/centos_9-ppc64le-qcow2_customize-boot.json
+index 4e60bd1a8..ba9157882 100644
+--- a/test/data/manifests/centos_9-ppc64le-qcow2_customize-boot.json
++++ b/test/data/manifests/centos_9-ppc64le-qcow2_customize-boot.json
+@@ -5492,6 +5492,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-200.el9.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/centos_9-x86_64-ami-boot.json b/test/data/manifests/centos_9-x86_64-ami-boot.json
+index c8bc730c2..a6e218258 100644
+--- a/test/data/manifests/centos_9-x86_64-ami-boot.json
++++ b/test/data/manifests/centos_9-x86_64-ami-boot.json
+@@ -4401,6 +4401,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-214.el9.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/centos_9-x86_64-edge_raw_image-boot.json b/test/data/manifests/centos_9-x86_64-edge_raw_image-boot.json
+index 24c53cebb..51fbde2ec 100644
+--- a/test/data/manifests/centos_9-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/centos_9-x86_64-edge_raw_image-boot.json
+@@ -2463,7 +2463,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4,rw,coreos.no_persist_ip,ignition.platform.id=metal,$ignition_firstboot",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4 rw coreos.no_persist_ip ignition.platform.id=metal $ignition_firstboot",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "centos",
+diff --git a/test/data/manifests/centos_9-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/centos_9-x86_64-edge_simplified_installer-boot.json
+index 47f1a397e..51e2bbc6d 100644
+--- a/test/data/manifests/centos_9-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/centos_9-x86_64-edge_simplified_installer-boot.json
+@@ -2775,7 +2775,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4,rw,coreos.no_persist_ip,ignition.platform.id=metal,$ignition_firstboot",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4 rw coreos.no_persist_ip ignition.platform.id=metal $ignition_firstboot",
+               "uefi": {
+                 "vendor": "centos",
+                 "install": true,
+diff --git a/test/data/manifests/centos_9-x86_64-gce-boot.json b/test/data/manifests/centos_9-x86_64-gce-boot.json
+index c01cde2a2..88bbdd581 100644
+--- a/test/data/manifests/centos_9-x86_64-gce-boot.json
++++ b/test/data/manifests/centos_9-x86_64-gce-boot.json
+@@ -4637,6 +4637,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "net.ifnames=0 biosdevname=0 scsi_mod.use_blk_mq=Y console=ttyS0,38400n8d",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "centos",
+diff --git a/test/data/manifests/centos_9-x86_64-oci-boot.json b/test/data/manifests/centos_9-x86_64-oci-boot.json
+index a2dccfa3f..7e0edf808 100644
+--- a/test/data/manifests/centos_9-x86_64-oci-boot.json
++++ b/test/data/manifests/centos_9-x86_64-oci-boot.json
+@@ -4777,6 +4777,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "centos",
+diff --git a/test/data/manifests/centos_9-x86_64-openstack-boot.json b/test/data/manifests/centos_9-x86_64-openstack-boot.json
+index 396c602c9..31e3c0f3b 100644
+--- a/test/data/manifests/centos_9-x86_64-openstack-boot.json
++++ b/test/data/manifests/centos_9-x86_64-openstack-boot.json
+@@ -4830,6 +4830,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "centos",
+diff --git a/test/data/manifests/centos_9-x86_64-qcow2-boot.json b/test/data/manifests/centos_9-x86_64-qcow2-boot.json
+index ca8d50aa3..c9710e242 100644
+--- a/test/data/manifests/centos_9-x86_64-qcow2-boot.json
++++ b/test/data/manifests/centos_9-x86_64-qcow2-boot.json
+@@ -4798,6 +4798,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "centos",
+diff --git a/test/data/manifests/centos_9-x86_64-qcow2_customize-boot.json b/test/data/manifests/centos_9-x86_64-qcow2_customize-boot.json
+index 683bb5876..0fe598129 100644
+--- a/test/data/manifests/centos_9-x86_64-qcow2_customize-boot.json
++++ b/test/data/manifests/centos_9-x86_64-qcow2_customize-boot.json
+@@ -5235,6 +5235,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "centos",
+diff --git a/test/data/manifests/centos_9-x86_64-vhd-boot.json b/test/data/manifests/centos_9-x86_64-vhd-boot.json
+index 8d17a264a..93589780c 100644
+--- a/test/data/manifests/centos_9-x86_64-vhd-boot.json
++++ b/test/data/manifests/centos_9-x86_64-vhd-boot.json
+@@ -6387,6 +6387,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "centos",
+diff --git a/test/data/manifests/centos_9-x86_64-vmdk-boot.json b/test/data/manifests/centos_9-x86_64-vmdk-boot.json
+index 9876b00bc..d7f244e16 100644
+--- a/test/data/manifests/centos_9-x86_64-vmdk-boot.json
++++ b/test/data/manifests/centos_9-x86_64-vmdk-boot.json
+@@ -4830,6 +4830,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "centos",
+diff --git a/test/data/manifests/fedora_36-aarch64-ami-boot.json b/test/data/manifests/fedora_36-aarch64-ami-boot.json
+index ffdd97314..b846f1237 100644
+--- a/test/data/manifests/fedora_36-aarch64-ami-boot.json
++++ b/test/data/manifests/fedora_36-aarch64-ami-boot.json
+@@ -4860,6 +4860,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_36-aarch64-iot_raw_image-boot.json b/test/data/manifests/fedora_36-aarch64-iot_raw_image-boot.json
+index 88e5d447d..6b5618f95 100644
+--- a/test/data/manifests/fedora_36-aarch64-iot_raw_image-boot.json
++++ b/test/data/manifests/fedora_36-aarch64-iot_raw_image-boot.json
+@@ -2234,7 +2234,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "modprobe.blacklist=vc4,rw",
++              "kernel_opts": "modprobe.blacklist=vc4 rw",
+               "uefi": {
+                 "vendor": "fedora",
+                 "install": true,
+diff --git a/test/data/manifests/fedora_36-aarch64-minimal_raw-boot.json b/test/data/manifests/fedora_36-aarch64-minimal_raw-boot.json
+index 430f26396..af7b0a340 100644
+--- a/test/data/manifests/fedora_36-aarch64-minimal_raw-boot.json
++++ b/test/data/manifests/fedora_36-aarch64-minimal_raw-boot.json
+@@ -4500,6 +4500,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_36-aarch64-oci-boot.json b/test/data/manifests/fedora_36-aarch64-oci-boot.json
+index b6b804525..7a1ef3d1b 100644
+--- a/test/data/manifests/fedora_36-aarch64-oci-boot.json
++++ b/test/data/manifests/fedora_36-aarch64-oci-boot.json
+@@ -4844,6 +4844,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_36-aarch64-openstack-boot.json b/test/data/manifests/fedora_36-aarch64-openstack-boot.json
+index 6c9597bb5..a6063828b 100644
+--- a/test/data/manifests/fedora_36-aarch64-openstack-boot.json
++++ b/test/data/manifests/fedora_36-aarch64-openstack-boot.json
+@@ -5089,6 +5089,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_36-aarch64-qcow2-boot.json b/test/data/manifests/fedora_36-aarch64-qcow2-boot.json
+index 111a46c1a..d2281dfc7 100644
+--- a/test/data/manifests/fedora_36-aarch64-qcow2-boot.json
++++ b/test/data/manifests/fedora_36-aarch64-qcow2-boot.json
+@@ -4865,6 +4865,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_36-aarch64-qcow2_customize-boot.json b/test/data/manifests/fedora_36-aarch64-qcow2_customize-boot.json
+index d4c21a775..511a68b70 100644
+--- a/test/data/manifests/fedora_36-aarch64-qcow2_customize-boot.json
++++ b/test/data/manifests/fedora_36-aarch64-qcow2_customize-boot.json
+@@ -5328,6 +5328,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0 debug",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_36-x86_64-ami-boot.json b/test/data/manifests/fedora_36-x86_64-ami-boot.json
+index ee747c8b6..474e457ca 100644
+--- a/test/data/manifests/fedora_36-x86_64-ami-boot.json
++++ b/test/data/manifests/fedora_36-x86_64-ami-boot.json
+@@ -4900,6 +4900,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.18.9-200.fc36.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/fedora_36-x86_64-iot_raw_image-boot.json b/test/data/manifests/fedora_36-x86_64-iot_raw_image-boot.json
+index 32401a1fc..47e82aece 100644
+--- a/test/data/manifests/fedora_36-x86_64-iot_raw_image-boot.json
++++ b/test/data/manifests/fedora_36-x86_64-iot_raw_image-boot.json
+@@ -2242,7 +2242,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "modprobe.blacklist=vc4,rw",
++              "kernel_opts": "modprobe.blacklist=vc4 rw",
+               "uefi": {
+                 "vendor": "fedora",
+                 "install": true,
+diff --git a/test/data/manifests/fedora_36-x86_64-minimal_raw-boot.json b/test/data/manifests/fedora_36-x86_64-minimal_raw-boot.json
+index adce6d6f7..b9736dc16 100644
+--- a/test/data/manifests/fedora_36-x86_64-minimal_raw-boot.json
++++ b/test/data/manifests/fedora_36-x86_64-minimal_raw-boot.json
+@@ -4540,6 +4540,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_36-x86_64-oci-boot.json b/test/data/manifests/fedora_36-x86_64-oci-boot.json
+index 46172c123..5033e0503 100644
+--- a/test/data/manifests/fedora_36-x86_64-oci-boot.json
++++ b/test/data/manifests/fedora_36-x86_64-oci-boot.json
+@@ -4988,6 +4988,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_36-x86_64-openstack-boot.json b/test/data/manifests/fedora_36-x86_64-openstack-boot.json
+index 0b5930cec..ec6fad281 100644
+--- a/test/data/manifests/fedora_36-x86_64-openstack-boot.json
++++ b/test/data/manifests/fedora_36-x86_64-openstack-boot.json
+@@ -5169,6 +5169,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_36-x86_64-qcow2-boot.json b/test/data/manifests/fedora_36-x86_64-qcow2-boot.json
+index ee610098e..583b35696 100644
+--- a/test/data/manifests/fedora_36-x86_64-qcow2-boot.json
++++ b/test/data/manifests/fedora_36-x86_64-qcow2-boot.json
+@@ -5009,6 +5009,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_36-x86_64-qcow2_customize-boot.json b/test/data/manifests/fedora_36-x86_64-qcow2_customize-boot.json
+index cad2fe590..00f33acac 100644
+--- a/test/data/manifests/fedora_36-x86_64-qcow2_customize-boot.json
++++ b/test/data/manifests/fedora_36-x86_64-qcow2_customize-boot.json
+@@ -5472,6 +5472,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0 debug",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_36-x86_64-vhd-boot.json b/test/data/manifests/fedora_36-x86_64-vhd-boot.json
+index d412d4ccd..9d663abf8 100644
+--- a/test/data/manifests/fedora_36-x86_64-vhd-boot.json
++++ b/test/data/manifests/fedora_36-x86_64-vhd-boot.json
+@@ -4809,6 +4809,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_36-x86_64-vmdk-boot.json b/test/data/manifests/fedora_36-x86_64-vmdk-boot.json
+index b8eff3dfe..cd59a43d0 100644
+--- a/test/data/manifests/fedora_36-x86_64-vmdk-boot.json
++++ b/test/data/manifests/fedora_36-x86_64-vmdk-boot.json
+@@ -5009,6 +5009,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_37-aarch64-ami-boot.json b/test/data/manifests/fedora_37-aarch64-ami-boot.json
+index d92cff420..515ad2d29 100644
+--- a/test/data/manifests/fedora_37-aarch64-ami-boot.json
++++ b/test/data/manifests/fedora_37-aarch64-ami-boot.json
+@@ -4850,6 +4850,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_37-aarch64-iot_raw_image-boot.json b/test/data/manifests/fedora_37-aarch64-iot_raw_image-boot.json
+index 64c84908f..2e787d907 100644
+--- a/test/data/manifests/fedora_37-aarch64-iot_raw_image-boot.json
++++ b/test/data/manifests/fedora_37-aarch64-iot_raw_image-boot.json
+@@ -2250,7 +2250,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "modprobe.blacklist=vc4,rw",
++              "kernel_opts": "modprobe.blacklist=vc4 rw",
+               "uefi": {
+                 "vendor": "fedora",
+                 "install": true,
+diff --git a/test/data/manifests/fedora_37-aarch64-minimal_raw-boot.json b/test/data/manifests/fedora_37-aarch64-minimal_raw-boot.json
+index 524a1fc53..c1590b525 100644
+--- a/test/data/manifests/fedora_37-aarch64-minimal_raw-boot.json
++++ b/test/data/manifests/fedora_37-aarch64-minimal_raw-boot.json
+@@ -4546,6 +4546,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_37-aarch64-oci-boot.json b/test/data/manifests/fedora_37-aarch64-oci-boot.json
+index e0b34ae7a..4ccbe3fea 100644
+--- a/test/data/manifests/fedora_37-aarch64-oci-boot.json
++++ b/test/data/manifests/fedora_37-aarch64-oci-boot.json
+@@ -4842,6 +4842,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_37-aarch64-openstack-boot.json b/test/data/manifests/fedora_37-aarch64-openstack-boot.json
+index 9edbfdc4e..61969ee16 100644
+--- a/test/data/manifests/fedora_37-aarch64-openstack-boot.json
++++ b/test/data/manifests/fedora_37-aarch64-openstack-boot.json
+@@ -5079,6 +5079,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_37-aarch64-qcow2-boot.json b/test/data/manifests/fedora_37-aarch64-qcow2-boot.json
+index 58ffe01aa..ef374152d 100644
+--- a/test/data/manifests/fedora_37-aarch64-qcow2-boot.json
++++ b/test/data/manifests/fedora_37-aarch64-qcow2-boot.json
+@@ -4863,6 +4863,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_37-aarch64-qcow2_customize-boot.json b/test/data/manifests/fedora_37-aarch64-qcow2_customize-boot.json
+index 3032425d2..888dc016a 100644
+--- a/test/data/manifests/fedora_37-aarch64-qcow2_customize-boot.json
++++ b/test/data/manifests/fedora_37-aarch64-qcow2_customize-boot.json
+@@ -5326,6 +5326,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0 debug",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_37-x86_64-ami-boot.json b/test/data/manifests/fedora_37-x86_64-ami-boot.json
+index 7a810e219..53e784a22 100644
+--- a/test/data/manifests/fedora_37-x86_64-ami-boot.json
++++ b/test/data/manifests/fedora_37-x86_64-ami-boot.json
+@@ -4890,6 +4890,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.19.15-301.fc37.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/fedora_37-x86_64-iot_raw_image-boot.json b/test/data/manifests/fedora_37-x86_64-iot_raw_image-boot.json
+index a689f2d6a..76858c746 100644
+--- a/test/data/manifests/fedora_37-x86_64-iot_raw_image-boot.json
++++ b/test/data/manifests/fedora_37-x86_64-iot_raw_image-boot.json
+@@ -2258,7 +2258,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "modprobe.blacklist=vc4,rw",
++              "kernel_opts": "modprobe.blacklist=vc4 rw",
+               "uefi": {
+                 "vendor": "fedora",
+                 "install": true,
+diff --git a/test/data/manifests/fedora_37-x86_64-minimal_raw-boot.json b/test/data/manifests/fedora_37-x86_64-minimal_raw-boot.json
+index d5a45e853..4beda0035 100644
+--- a/test/data/manifests/fedora_37-x86_64-minimal_raw-boot.json
++++ b/test/data/manifests/fedora_37-x86_64-minimal_raw-boot.json
+@@ -4586,6 +4586,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_37-x86_64-oci-boot.json b/test/data/manifests/fedora_37-x86_64-oci-boot.json
+index 4def29d5d..24534b278 100644
+--- a/test/data/manifests/fedora_37-x86_64-oci-boot.json
++++ b/test/data/manifests/fedora_37-x86_64-oci-boot.json
+@@ -4954,6 +4954,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_37-x86_64-openstack-boot.json b/test/data/manifests/fedora_37-x86_64-openstack-boot.json
+index dea21994d..b3a3200ce 100644
+--- a/test/data/manifests/fedora_37-x86_64-openstack-boot.json
++++ b/test/data/manifests/fedora_37-x86_64-openstack-boot.json
+@@ -5159,6 +5159,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_37-x86_64-qcow2-boot.json b/test/data/manifests/fedora_37-x86_64-qcow2-boot.json
+index ff232b578..1591e43fb 100644
+--- a/test/data/manifests/fedora_37-x86_64-qcow2-boot.json
++++ b/test/data/manifests/fedora_37-x86_64-qcow2-boot.json
+@@ -4975,6 +4975,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_37-x86_64-qcow2_customize-boot.json b/test/data/manifests/fedora_37-x86_64-qcow2_customize-boot.json
+index 048ed892e..c93c2de74 100644
+--- a/test/data/manifests/fedora_37-x86_64-qcow2_customize-boot.json
++++ b/test/data/manifests/fedora_37-x86_64-qcow2_customize-boot.json
+@@ -5438,6 +5438,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0 debug",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_37-x86_64-vhd-boot.json b/test/data/manifests/fedora_37-x86_64-vhd-boot.json
+index 34adf5df9..10a94b6bb 100644
+--- a/test/data/manifests/fedora_37-x86_64-vhd-boot.json
++++ b/test/data/manifests/fedora_37-x86_64-vhd-boot.json
+@@ -4855,6 +4855,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_37-x86_64-vmdk-boot.json b/test/data/manifests/fedora_37-x86_64-vmdk-boot.json
+index f6fced247..6827a7c87 100644
+--- a/test/data/manifests/fedora_37-x86_64-vmdk-boot.json
++++ b/test/data/manifests/fedora_37-x86_64-vmdk-boot.json
+@@ -4975,6 +4975,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_38-aarch64-ami-boot.json b/test/data/manifests/fedora_38-aarch64-ami-boot.json
+index ace8ca0b2..184cfa2e5 100644
+--- a/test/data/manifests/fedora_38-aarch64-ami-boot.json
++++ b/test/data/manifests/fedora_38-aarch64-ami-boot.json
+@@ -4858,6 +4858,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_38-aarch64-iot_raw_image-boot.json b/test/data/manifests/fedora_38-aarch64-iot_raw_image-boot.json
+index e8e8ab237..f2bca6901 100644
+--- a/test/data/manifests/fedora_38-aarch64-iot_raw_image-boot.json
++++ b/test/data/manifests/fedora_38-aarch64-iot_raw_image-boot.json
+@@ -2065,7 +2065,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "modprobe.blacklist=vc4,rw",
++              "kernel_opts": "modprobe.blacklist=vc4 rw",
+               "uefi": {
+                 "vendor": "fedora",
+                 "install": true,
+diff --git a/test/data/manifests/fedora_38-aarch64-minimal_raw-boot.json b/test/data/manifests/fedora_38-aarch64-minimal_raw-boot.json
+index c707c5fac..bc55dd531 100644
+--- a/test/data/manifests/fedora_38-aarch64-minimal_raw-boot.json
++++ b/test/data/manifests/fedora_38-aarch64-minimal_raw-boot.json
+@@ -4554,6 +4554,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_38-aarch64-oci-boot.json b/test/data/manifests/fedora_38-aarch64-oci-boot.json
+index 8315551b5..349a040d2 100644
+--- a/test/data/manifests/fedora_38-aarch64-oci-boot.json
++++ b/test/data/manifests/fedora_38-aarch64-oci-boot.json
+@@ -4850,6 +4850,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_38-aarch64-openstack-boot.json b/test/data/manifests/fedora_38-aarch64-openstack-boot.json
+index c023f0d22..498e6ced0 100644
+--- a/test/data/manifests/fedora_38-aarch64-openstack-boot.json
++++ b/test/data/manifests/fedora_38-aarch64-openstack-boot.json
+@@ -5087,6 +5087,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_38-aarch64-qcow2-boot.json b/test/data/manifests/fedora_38-aarch64-qcow2-boot.json
+index 6d325625d..09b751ece 100644
+--- a/test/data/manifests/fedora_38-aarch64-qcow2-boot.json
++++ b/test/data/manifests/fedora_38-aarch64-qcow2-boot.json
+@@ -4871,6 +4871,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_38-aarch64-qcow2_customize-boot.json b/test/data/manifests/fedora_38-aarch64-qcow2_customize-boot.json
+index a7f2a2343..078e438c9 100644
+--- a/test/data/manifests/fedora_38-aarch64-qcow2_customize-boot.json
++++ b/test/data/manifests/fedora_38-aarch64-qcow2_customize-boot.json
+@@ -5334,6 +5334,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0 debug",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_38-x86_64-ami-boot.json b/test/data/manifests/fedora_38-x86_64-ami-boot.json
+index bf3246f2c..4a4a93056 100644
+--- a/test/data/manifests/fedora_38-x86_64-ami-boot.json
++++ b/test/data/manifests/fedora_38-x86_64-ami-boot.json
+@@ -4890,6 +4890,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-6.1.0-0.rc2.21.fc38.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/fedora_38-x86_64-iot_raw_image-boot.json b/test/data/manifests/fedora_38-x86_64-iot_raw_image-boot.json
+index fec03577f..a710c3ff2 100644
+--- a/test/data/manifests/fedora_38-x86_64-iot_raw_image-boot.json
++++ b/test/data/manifests/fedora_38-x86_64-iot_raw_image-boot.json
+@@ -2065,7 +2065,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "modprobe.blacklist=vc4,rw",
++              "kernel_opts": "modprobe.blacklist=vc4 rw",
+               "uefi": {
+                 "vendor": "fedora",
+                 "install": true,
+diff --git a/test/data/manifests/fedora_38-x86_64-minimal_raw-boot.json b/test/data/manifests/fedora_38-x86_64-minimal_raw-boot.json
+index 5044fe958..dd0cf4f2a 100644
+--- a/test/data/manifests/fedora_38-x86_64-minimal_raw-boot.json
++++ b/test/data/manifests/fedora_38-x86_64-minimal_raw-boot.json
+@@ -4586,6 +4586,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "uefi": {
+                 "vendor": "fedora",
+                 "unified": true
+diff --git a/test/data/manifests/fedora_38-x86_64-oci-boot.json b/test/data/manifests/fedora_38-x86_64-oci-boot.json
+index 9991cd84d..6c53a5971 100644
+--- a/test/data/manifests/fedora_38-x86_64-oci-boot.json
++++ b/test/data/manifests/fedora_38-x86_64-oci-boot.json
+@@ -4954,6 +4954,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_38-x86_64-openstack-boot.json b/test/data/manifests/fedora_38-x86_64-openstack-boot.json
+index 7a91cd0a9..d31c67ef0 100644
+--- a/test/data/manifests/fedora_38-x86_64-openstack-boot.json
++++ b/test/data/manifests/fedora_38-x86_64-openstack-boot.json
+@@ -5159,6 +5159,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_38-x86_64-qcow2-boot.json b/test/data/manifests/fedora_38-x86_64-qcow2-boot.json
+index a39aa9a10..038bd7200 100644
+--- a/test/data/manifests/fedora_38-x86_64-qcow2-boot.json
++++ b/test/data/manifests/fedora_38-x86_64-qcow2-boot.json
+@@ -4975,6 +4975,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_38-x86_64-qcow2_customize-boot.json b/test/data/manifests/fedora_38-x86_64-qcow2_customize-boot.json
+index 127957b62..f15358200 100644
+--- a/test/data/manifests/fedora_38-x86_64-qcow2_customize-boot.json
++++ b/test/data/manifests/fedora_38-x86_64-qcow2_customize-boot.json
+@@ -5438,6 +5438,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0 debug",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_38-x86_64-vhd-boot.json b/test/data/manifests/fedora_38-x86_64-vhd-boot.json
+index 1e0832763..5819957c5 100644
+--- a/test/data/manifests/fedora_38-x86_64-vhd-boot.json
++++ b/test/data/manifests/fedora_38-x86_64-vhd-boot.json
+@@ -4855,6 +4855,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/fedora_38-x86_64-vmdk-boot.json b/test/data/manifests/fedora_38-x86_64-vmdk-boot.json
+index 81c68a15f..411e6f7af 100644
+--- a/test/data/manifests/fedora_38-x86_64-vmdk-boot.json
++++ b/test/data/manifests/fedora_38-x86_64-vmdk-boot.json
+@@ -4975,6 +4975,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro no_timer_check console=ttyS0,115200n8 biosdevname=0 net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "fedora",
+diff --git a/test/data/manifests/rhel_8-aarch64-edge_raw_image-boot.json b/test/data/manifests/rhel_8-aarch64-edge_raw_image-boot.json
+index b28f4c370..2898d19c3 100644
+--- a/test/data/manifests/rhel_8-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_8-aarch64-edge_raw_image-boot.json
+@@ -1014,7 +1014,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_8-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_8-aarch64-edge_simplified_installer-boot.json
+index fd39d5fcc..63a5cbe3a 100644
+--- a/test/data/manifests/rhel_8-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_8-aarch64-edge_simplified_installer-boot.json
+@@ -1151,7 +1151,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_8-x86_64-edge_raw_image-boot.json b/test/data/manifests/rhel_8-x86_64-edge_raw_image-boot.json
+index 9c6247268..7199b7729 100644
+--- a/test/data/manifests/rhel_8-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_8-x86_64-edge_raw_image-boot.json
+@@ -1056,7 +1056,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_8-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_8-x86_64-edge_simplified_installer-boot.json
+index 003156dfd..fea9c2756 100644
+--- a/test/data/manifests/rhel_8-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_8-x86_64-edge_simplified_installer-boot.json
+@@ -1169,7 +1169,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_86-aarch64-edge_raw_image-boot.json b/test/data/manifests/rhel_86-aarch64-edge_raw_image-boot.json
+index 1ac4cbca4..315a22712 100644
+--- a/test/data/manifests/rhel_86-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_86-aarch64-edge_raw_image-boot.json
+@@ -1014,7 +1014,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_86-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_86-aarch64-edge_simplified_installer-boot.json
+index fec2fb986..89207defa 100644
+--- a/test/data/manifests/rhel_86-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_86-aarch64-edge_simplified_installer-boot.json
+@@ -1154,7 +1154,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_86-x86_64-edge_raw_image-boot.json b/test/data/manifests/rhel_86-x86_64-edge_raw_image-boot.json
+index f3e7a7688..71a23e36a 100644
+--- a/test/data/manifests/rhel_86-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_86-x86_64-edge_raw_image-boot.json
+@@ -1056,7 +1056,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_86-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_86-x86_64-edge_simplified_installer-boot.json
+index dd58c65c1..20ce30d7c 100644
+--- a/test/data/manifests/rhel_86-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_86-x86_64-edge_simplified_installer-boot.json
+@@ -1172,7 +1172,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_87-aarch64-edge_raw_image-boot.json b/test/data/manifests/rhel_87-aarch64-edge_raw_image-boot.json
+index a08243600..fe0d0f623 100644
+--- a/test/data/manifests/rhel_87-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_87-aarch64-edge_raw_image-boot.json
+@@ -1014,7 +1014,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_87-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_87-aarch64-edge_simplified_installer-boot.json
+index 1dc34ad7f..ecd995d10 100644
+--- a/test/data/manifests/rhel_87-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_87-aarch64-edge_simplified_installer-boot.json
+@@ -1151,7 +1151,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_87-x86_64-edge_raw_image-boot.json b/test/data/manifests/rhel_87-x86_64-edge_raw_image-boot.json
+index 6e7f0b973..46f364551 100644
+--- a/test/data/manifests/rhel_87-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_87-x86_64-edge_raw_image-boot.json
+@@ -1056,7 +1056,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_87-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_87-x86_64-edge_simplified_installer-boot.json
+index aad826735..728292143 100644
+--- a/test/data/manifests/rhel_87-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_87-x86_64-edge_simplified_installer-boot.json
+@@ -1169,7 +1169,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_88-aarch64-edge_raw_image-boot.json b/test/data/manifests/rhel_88-aarch64-edge_raw_image-boot.json
+index 3fc775f64..8e8a84176 100644
+--- a/test/data/manifests/rhel_88-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_88-aarch64-edge_raw_image-boot.json
+@@ -1014,7 +1014,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_88-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_88-aarch64-edge_simplified_installer-boot.json
+index 8e3749273..a417ce45e 100644
+--- a/test/data/manifests/rhel_88-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_88-aarch64-edge_simplified_installer-boot.json
+@@ -1151,7 +1151,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_88-x86_64-edge_raw_image-boot.json b/test/data/manifests/rhel_88-x86_64-edge_raw_image-boot.json
+index 6d87ddb8b..b9a9fbfe9 100644
+--- a/test/data/manifests/rhel_88-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_88-x86_64-edge_raw_image-boot.json
+@@ -1056,7 +1056,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_88-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_88-x86_64-edge_simplified_installer-boot.json
+index 238e80a06..7635c6385 100644
+--- a/test/data/manifests/rhel_88-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_88-x86_64-edge_simplified_installer-boot.json
+@@ -1169,7 +1169,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_9-aarch64-ami-boot.json b/test/data/manifests/rhel_9-aarch64-ami-boot.json
+index 0b0a5dc4d..786c70656 100644
+--- a/test/data/manifests/rhel_9-aarch64-ami-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-ami-boot.json
+@@ -4583,6 +4583,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 iommu.strict=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_9-aarch64-azure_rhui-boot.json b/test/data/manifests/rhel_9-aarch64-azure_rhui-boot.json
+index 8864a8d68..0c080e789 100644
+--- a/test/data/manifests/rhel_9-aarch64-azure_rhui-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-azure_rhui-boot.json
+@@ -6337,6 +6337,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_9-aarch64-ec2-boot.json b/test/data/manifests/rhel_9-aarch64-ec2-boot.json
+index 37b27fa31..6b09a267f 100644
+--- a/test/data/manifests/rhel_9-aarch64-ec2-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-ec2-boot.json
+@@ -4616,6 +4616,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 iommu.strict=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_9-aarch64-edge_raw_image-boot.json b/test/data/manifests/rhel_9-aarch64-edge_raw_image-boot.json
+index f685f6fdd..aa008fe6c 100644
+--- a/test/data/manifests/rhel_9-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-edge_raw_image-boot.json
+@@ -2388,7 +2388,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_9-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_9-aarch64-edge_simplified_installer-boot.json
+index c9d3b40ed..f98b7b296 100644
+--- a/test/data/manifests/rhel_9-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-edge_simplified_installer-boot.json
+@@ -2772,7 +2772,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_9-aarch64-openstack-boot.json b/test/data/manifests/rhel_9-aarch64-openstack-boot.json
+index fb5678905..96cf5f2aa 100644
+--- a/test/data/manifests/rhel_9-aarch64-openstack-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-openstack-boot.json
+@@ -4558,6 +4558,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_9-aarch64-qcow2-boot.json b/test/data/manifests/rhel_9-aarch64-qcow2-boot.json
+index 17dd2fa76..7b470c945 100644
+--- a/test/data/manifests/rhel_9-aarch64-qcow2-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-qcow2-boot.json
+@@ -4699,6 +4699,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_9-aarch64-qcow2_customize-boot.json b/test/data/manifests/rhel_9-aarch64-qcow2_customize-boot.json
+index 46c277281..0f6a4b874 100644
+--- a/test/data/manifests/rhel_9-aarch64-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-qcow2_customize-boot.json
+@@ -5056,6 +5056,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_9-aarch64-vhd-boot.json b/test/data/manifests/rhel_9-aarch64-vhd-boot.json
+index 45aa46d21..948723cc2 100644
+--- a/test/data/manifests/rhel_9-aarch64-vhd-boot.json
++++ b/test/data/manifests/rhel_9-aarch64-vhd-boot.json
+@@ -6256,6 +6256,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_9-ppc64le-qcow2-boot.json b/test/data/manifests/rhel_9-ppc64le-qcow2-boot.json
+index 528289742..145321f68 100644
+--- a/test/data/manifests/rhel_9-ppc64le-qcow2-boot.json
++++ b/test/data/manifests/rhel_9-ppc64le-qcow2-boot.json
+@@ -5316,6 +5316,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_9-ppc64le-qcow2_customize-boot.json b/test/data/manifests/rhel_9-ppc64le-qcow2_customize-boot.json
+index 3d423ce25..416dea432 100644
+--- a/test/data/manifests/rhel_9-ppc64le-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_9-ppc64le-qcow2_customize-boot.json
+@@ -5657,6 +5657,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_9-x86_64-ami-boot.json b/test/data/manifests/rhel_9-x86_64-ami-boot.json
+index 4fb64eaf3..9f10919c3 100644
+--- a/test/data/manifests/rhel_9-x86_64-ami-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-ami-boot.json
+@@ -4547,6 +4547,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_9-x86_64-azure_rhui-boot.json b/test/data/manifests/rhel_9-x86_64-azure_rhui-boot.json
+index 392c0d1fb..093a7aac4 100644
+--- a/test/data/manifests/rhel_9-x86_64-azure_rhui-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-azure_rhui-boot.json
+@@ -6617,6 +6617,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_9-x86_64-ec2-boot.json b/test/data/manifests/rhel_9-x86_64-ec2-boot.json
+index 75d758394..b09ea4e15 100644
+--- a/test/data/manifests/rhel_9-x86_64-ec2-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-ec2-boot.json
+@@ -4582,6 +4582,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_9-x86_64-ec2_ha-boot.json b/test/data/manifests/rhel_9-x86_64-ec2_ha-boot.json
+index 9a74c230d..638117d11 100644
+--- a/test/data/manifests/rhel_9-x86_64-ec2_ha-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-ec2_ha-boot.json
+@@ -6026,6 +6026,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_9-x86_64-ec2_sap-boot.json b/test/data/manifests/rhel_9-x86_64-ec2_sap-boot.json
+index 79fec17e3..1fae9beb7 100644
+--- a/test/data/manifests/rhel_9-x86_64-ec2_sap-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-ec2_sap-boot.json
+@@ -8581,6 +8581,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 processor.max_cstate=1 intel_idle.max_cstate=1",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_9-x86_64-edge_raw_image-boot.json b/test/data/manifests/rhel_9-x86_64-edge_raw_image-boot.json
+index 7a7cd90ff..9c23f4bc0 100644
+--- a/test/data/manifests/rhel_9-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-edge_raw_image-boot.json
+@@ -2508,7 +2508,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_9-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_9-x86_64-edge_simplified_installer-boot.json
+index 1b0ea9073..ef91594a5 100644
+--- a/test/data/manifests/rhel_9-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-edge_simplified_installer-boot.json
+@@ -2820,7 +2820,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_9-x86_64-gce-boot.json b/test/data/manifests/rhel_9-x86_64-gce-boot.json
+index 8812df796..fdcda184b 100644
+--- a/test/data/manifests/rhel_9-x86_64-gce-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-gce-boot.json
+@@ -4807,6 +4807,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "net.ifnames=0 biosdevname=0 scsi_mod.use_blk_mq=Y console=ttyS0,38400n8d",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_9-x86_64-gce_rhui-boot.json b/test/data/manifests/rhel_9-x86_64-gce_rhui-boot.json
+index 3bb3ee4e6..676931e56 100644
+--- a/test/data/manifests/rhel_9-x86_64-gce_rhui-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-gce_rhui-boot.json
+@@ -4813,6 +4813,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "net.ifnames=0 biosdevname=0 scsi_mod.use_blk_mq=Y console=ttyS0,38400n8d",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_9-x86_64-oci-boot.json b/test/data/manifests/rhel_9-x86_64-oci-boot.json
+index b1fc02d8c..9798c8ae7 100644
+--- a/test/data/manifests/rhel_9-x86_64-oci-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-oci-boot.json
+@@ -4934,6 +4934,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_9-x86_64-openstack-boot.json b/test/data/manifests/rhel_9-x86_64-openstack-boot.json
+index 2681a7573..fe1dce67d 100644
+--- a/test/data/manifests/rhel_9-x86_64-openstack-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-openstack-boot.json
+@@ -4918,6 +4918,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_9-x86_64-qcow2-boot.json b/test/data/manifests/rhel_9-x86_64-qcow2-boot.json
+index 8f97309e9..5b54d8084 100644
+--- a/test/data/manifests/rhel_9-x86_64-qcow2-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-qcow2-boot.json
+@@ -4955,6 +4955,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_9-x86_64-qcow2_customize-boot.json b/test/data/manifests/rhel_9-x86_64-qcow2_customize-boot.json
+index 3a75f22c7..806891283 100644
+--- a/test/data/manifests/rhel_9-x86_64-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-qcow2_customize-boot.json
+@@ -5392,6 +5392,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_9-x86_64-vhd-boot.json b/test/data/manifests/rhel_9-x86_64-vhd-boot.json
+index 00295989d..f08280821 100644
+--- a/test/data/manifests/rhel_9-x86_64-vhd-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-vhd-boot.json
+@@ -6552,6 +6552,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_9-x86_64-vmdk-boot.json b/test/data/manifests/rhel_9-x86_64-vmdk-boot.json
+index f83062f85..fce8f9181 100644
+--- a/test/data/manifests/rhel_9-x86_64-vmdk-boot.json
++++ b/test/data/manifests/rhel_9-x86_64-vmdk-boot.json
+@@ -4918,6 +4918,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-aarch64-ami-boot.json b/test/data/manifests/rhel_90-aarch64-ami-boot.json
+index c0f46b674..feecc6ab1 100644
+--- a/test/data/manifests/rhel_90-aarch64-ami-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-ami-boot.json
+@@ -1888,6 +1888,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 iommu.strict=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_90-aarch64-azure_rhui-boot.json b/test/data/manifests/rhel_90-aarch64-azure_rhui-boot.json
+index 358b5f207..a7ed61be4 100644
+--- a/test/data/manifests/rhel_90-aarch64-azure_rhui-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-azure_rhui-boot.json
+@@ -2575,6 +2575,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_90-aarch64-ec2-boot.json b/test/data/manifests/rhel_90-aarch64-ec2-boot.json
+index f0f8f057c..ee714cc22 100644
+--- a/test/data/manifests/rhel_90-aarch64-ec2-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-ec2-boot.json
+@@ -1907,6 +1907,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 iommu.strict=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_90-aarch64-edge_raw_image-boot.json b/test/data/manifests/rhel_90-aarch64-edge_raw_image-boot.json
+index 22ac86d95..f4ab998e3 100644
+--- a/test/data/manifests/rhel_90-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-edge_raw_image-boot.json
+@@ -993,7 +993,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_90-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_90-aarch64-edge_simplified_installer-boot.json
+index 36fc60626..3efc462da 100644
+--- a/test/data/manifests/rhel_90-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-edge_simplified_installer-boot.json
+@@ -1142,7 +1142,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_90-aarch64-openstack-boot.json b/test/data/manifests/rhel_90-aarch64-openstack-boot.json
+index 8895d7854..19832c91a 100644
+--- a/test/data/manifests/rhel_90-aarch64-openstack-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-openstack-boot.json
+@@ -1808,6 +1808,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_90-aarch64-qcow2-boot.json b/test/data/manifests/rhel_90-aarch64-qcow2-boot.json
+index e89ae4c61..99ac54af0 100644
+--- a/test/data/manifests/rhel_90-aarch64-qcow2-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-qcow2-boot.json
+@@ -1857,6 +1857,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_90-aarch64-qcow2_customize-boot.json b/test/data/manifests/rhel_90-aarch64-qcow2_customize-boot.json
+index 6baecd9ef..fe0c26c2f 100644
+--- a/test/data/manifests/rhel_90-aarch64-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-qcow2_customize-boot.json
+@@ -2086,6 +2086,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_90-aarch64-vhd-boot.json b/test/data/manifests/rhel_90-aarch64-vhd-boot.json
+index 5d6532efc..028e1abca 100644
+--- a/test/data/manifests/rhel_90-aarch64-vhd-boot.json
++++ b/test/data/manifests/rhel_90-aarch64-vhd-boot.json
+@@ -2529,6 +2529,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_90-ppc64le-qcow2-boot.json b/test/data/manifests/rhel_90-ppc64le-qcow2-boot.json
+index 5b1924460..0fd2c6577 100644
+--- a/test/data/manifests/rhel_90-ppc64le-qcow2-boot.json
++++ b/test/data/manifests/rhel_90-ppc64le-qcow2-boot.json
+@@ -2087,6 +2087,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-55.el9.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_90-ppc64le-qcow2_customize-boot.json b/test/data/manifests/rhel_90-ppc64le-qcow2_customize-boot.json
+index a139363fc..a3c56fdb9 100644
+--- a/test/data/manifests/rhel_90-ppc64le-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_90-ppc64le-qcow2_customize-boot.json
+@@ -2310,6 +2310,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-55.el9.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_90-x86_64-ami-boot.json b/test/data/manifests/rhel_90-x86_64-ami-boot.json
+index 9d6e67338..f1216b736 100644
+--- a/test/data/manifests/rhel_90-x86_64-ami-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-ami-boot.json
+@@ -1891,6 +1891,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-55.el9.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_90-x86_64-azure_rhui-boot.json b/test/data/manifests/rhel_90-x86_64-azure_rhui-boot.json
+index e5e694ac5..e20919769 100644
+--- a/test/data/manifests/rhel_90-x86_64-azure_rhui-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-azure_rhui-boot.json
+@@ -2683,6 +2683,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-x86_64-ec2-boot.json b/test/data/manifests/rhel_90-x86_64-ec2-boot.json
+index a83046744..14a50d770 100644
+--- a/test/data/manifests/rhel_90-x86_64-ec2-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-ec2-boot.json
+@@ -1912,6 +1912,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-55.el9.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_90-x86_64-ec2_ha-boot.json b/test/data/manifests/rhel_90-x86_64-ec2_ha-boot.json
+index 1710938d1..ba6d0ea9b 100644
+--- a/test/data/manifests/rhel_90-x86_64-ec2_ha-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-ec2_ha-boot.json
+@@ -2484,6 +2484,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-55.el9.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_90-x86_64-ec2_sap-boot.json b/test/data/manifests/rhel_90-x86_64-ec2_sap-boot.json
+index beb20f4c0..6de936929 100644
+--- a/test/data/manifests/rhel_90-x86_64-ec2_sap-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-ec2_sap-boot.json
+@@ -3404,6 +3404,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 processor.max_cstate=1 intel_idle.max_cstate=1",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-55.el9.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_90-x86_64-edge_raw_image-boot.json b/test/data/manifests/rhel_90-x86_64-edge_raw_image-boot.json
+index 733feba94..f6c867a0f 100644
+--- a/test/data/manifests/rhel_90-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-edge_raw_image-boot.json
+@@ -1041,7 +1041,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_90-x86_64-edge_simplified_installer-boot.json
+index 70828f36e..76e558aa5 100644
+--- a/test/data/manifests/rhel_90-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-edge_simplified_installer-boot.json
+@@ -1163,7 +1163,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_90-x86_64-gce-boot.json b/test/data/manifests/rhel_90-x86_64-gce-boot.json
+index b4bba62cf..d9e61a708 100644
+--- a/test/data/manifests/rhel_90-x86_64-gce-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-gce-boot.json
+@@ -1977,6 +1977,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "net.ifnames=0 biosdevname=0 scsi_mod.use_blk_mq=Y console=ttyS0,38400n8d",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-x86_64-gce_rhui-boot.json b/test/data/manifests/rhel_90-x86_64-gce_rhui-boot.json
+index 7c0cb1cb0..6951d35ac 100644
+--- a/test/data/manifests/rhel_90-x86_64-gce_rhui-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-gce_rhui-boot.json
+@@ -1983,6 +1983,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "net.ifnames=0 biosdevname=0 scsi_mod.use_blk_mq=Y console=ttyS0,38400n8d",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-x86_64-oci-boot.json b/test/data/manifests/rhel_90-x86_64-oci-boot.json
+index cd9b86a52..74239a9e4 100644
+--- a/test/data/manifests/rhel_90-x86_64-oci-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-oci-boot.json
+@@ -1938,6 +1938,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-x86_64-openstack-boot.json b/test/data/manifests/rhel_90-x86_64-openstack-boot.json
+index 12849b2b6..3345af50f 100644
+--- a/test/data/manifests/rhel_90-x86_64-openstack-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-openstack-boot.json
+@@ -1952,6 +1952,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-x86_64-qcow2-boot.json b/test/data/manifests/rhel_90-x86_64-qcow2-boot.json
+index 7f0cf0a13..5a4011d8b 100644
+--- a/test/data/manifests/rhel_90-x86_64-qcow2-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-qcow2-boot.json
+@@ -1959,6 +1959,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-x86_64-qcow2_customize-boot.json b/test/data/manifests/rhel_90-x86_64-qcow2_customize-boot.json
+index f87f5689d..8e4c6d4b1 100644
+--- a/test/data/manifests/rhel_90-x86_64-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-qcow2_customize-boot.json
+@@ -2218,6 +2218,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-x86_64-vhd-boot.json b/test/data/manifests/rhel_90-x86_64-vhd-boot.json
+index 79f1dd566..7a117335c 100644
+--- a/test/data/manifests/rhel_90-x86_64-vhd-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-vhd-boot.json
+@@ -2643,6 +2643,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_90-x86_64-vmdk-boot.json b/test/data/manifests/rhel_90-x86_64-vmdk-boot.json
+index d8ac8f757..11b8e05cf 100644
+--- a/test/data/manifests/rhel_90-x86_64-vmdk-boot.json
++++ b/test/data/manifests/rhel_90-x86_64-vmdk-boot.json
+@@ -1952,6 +1952,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-aarch64-ami-boot.json b/test/data/manifests/rhel_91-aarch64-ami-boot.json
+index 743e64cf3..994751ae8 100644
+--- a/test/data/manifests/rhel_91-aarch64-ami-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-ami-boot.json
+@@ -4583,6 +4583,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 iommu.strict=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_91-aarch64-azure_rhui-boot.json b/test/data/manifests/rhel_91-aarch64-azure_rhui-boot.json
+index 66c8a1109..f00c3ae9d 100644
+--- a/test/data/manifests/rhel_91-aarch64-azure_rhui-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-azure_rhui-boot.json
+@@ -6337,6 +6337,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_91-aarch64-ec2-boot.json b/test/data/manifests/rhel_91-aarch64-ec2-boot.json
+index 8886d931d..9e55d11f8 100644
+--- a/test/data/manifests/rhel_91-aarch64-ec2-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-ec2-boot.json
+@@ -4616,6 +4616,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 iommu.strict=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_91-aarch64-edge_raw_image-boot.json b/test/data/manifests/rhel_91-aarch64-edge_raw_image-boot.json
+index 90e6eb67e..6cb22bc74 100644
+--- a/test/data/manifests/rhel_91-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-edge_raw_image-boot.json
+@@ -2388,7 +2388,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_91-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_91-aarch64-edge_simplified_installer-boot.json
+index f3000f74f..3b749716d 100644
+--- a/test/data/manifests/rhel_91-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-edge_simplified_installer-boot.json
+@@ -2772,7 +2772,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_91-aarch64-openstack-boot.json b/test/data/manifests/rhel_91-aarch64-openstack-boot.json
+index e2c2624cd..854a7717a 100644
+--- a/test/data/manifests/rhel_91-aarch64-openstack-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-openstack-boot.json
+@@ -4558,6 +4558,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_91-aarch64-qcow2-boot.json b/test/data/manifests/rhel_91-aarch64-qcow2-boot.json
+index eb6a5f423..bb9d06025 100644
+--- a/test/data/manifests/rhel_91-aarch64-qcow2-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-qcow2-boot.json
+@@ -4699,6 +4699,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_91-aarch64-qcow2_customize-boot.json b/test/data/manifests/rhel_91-aarch64-qcow2_customize-boot.json
+index adf1a2e22..499ec4487 100644
+--- a/test/data/manifests/rhel_91-aarch64-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-qcow2_customize-boot.json
+@@ -5329,6 +5329,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_91-aarch64-vhd-boot.json b/test/data/manifests/rhel_91-aarch64-vhd-boot.json
+index 8c5eaf4c0..b255f51e5 100644
+--- a/test/data/manifests/rhel_91-aarch64-vhd-boot.json
++++ b/test/data/manifests/rhel_91-aarch64-vhd-boot.json
+@@ -6256,6 +6256,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_91-ppc64le-qcow2-boot.json b/test/data/manifests/rhel_91-ppc64le-qcow2-boot.json
+index 7e6139d8c..858fad529 100644
+--- a/test/data/manifests/rhel_91-ppc64le-qcow2-boot.json
++++ b/test/data/manifests/rhel_91-ppc64le-qcow2-boot.json
+@@ -5316,6 +5316,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_91-ppc64le-qcow2_customize-boot.json b/test/data/manifests/rhel_91-ppc64le-qcow2_customize-boot.json
+index 8e8051dfd..aa2870cab 100644
+--- a/test/data/manifests/rhel_91-ppc64le-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_91-ppc64le-qcow2_customize-boot.json
+@@ -5930,6 +5930,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_91-x86_64-ami-boot.json b/test/data/manifests/rhel_91-x86_64-ami-boot.json
+index 7d69040ee..0eccb5f6f 100644
+--- a/test/data/manifests/rhel_91-x86_64-ami-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-ami-boot.json
+@@ -4547,6 +4547,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_91-x86_64-azure_rhui-boot.json b/test/data/manifests/rhel_91-x86_64-azure_rhui-boot.json
+index 16480f83b..d4ecfc5c2 100644
+--- a/test/data/manifests/rhel_91-x86_64-azure_rhui-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-azure_rhui-boot.json
+@@ -6617,6 +6617,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-x86_64-ec2-boot.json b/test/data/manifests/rhel_91-x86_64-ec2-boot.json
+index 52eac0ebb..bd98a5bda 100644
+--- a/test/data/manifests/rhel_91-x86_64-ec2-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-ec2-boot.json
+@@ -4582,6 +4582,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_91-x86_64-ec2_ha-boot.json b/test/data/manifests/rhel_91-x86_64-ec2_ha-boot.json
+index 38e0639db..57346d4f8 100644
+--- a/test/data/manifests/rhel_91-x86_64-ec2_ha-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-ec2_ha-boot.json
+@@ -6026,6 +6026,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_91-x86_64-ec2_sap-boot.json b/test/data/manifests/rhel_91-x86_64-ec2_sap-boot.json
+index ef87883ee..283cf91a9 100644
+--- a/test/data/manifests/rhel_91-x86_64-ec2_sap-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-ec2_sap-boot.json
+@@ -8581,6 +8581,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 processor.max_cstate=1 intel_idle.max_cstate=1",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-162.6.1.el9_1.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_91-x86_64-edge_raw_image-boot.json b/test/data/manifests/rhel_91-x86_64-edge_raw_image-boot.json
+index fdda7d85d..d562ccf57 100644
+--- a/test/data/manifests/rhel_91-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-edge_raw_image-boot.json
+@@ -2508,7 +2508,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_91-x86_64-edge_simplified_installer-boot.json
+index 4645facc7..52ec164de 100644
+--- a/test/data/manifests/rhel_91-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-edge_simplified_installer-boot.json
+@@ -2820,7 +2820,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_91-x86_64-gce-boot.json b/test/data/manifests/rhel_91-x86_64-gce-boot.json
+index 4edde03f5..7bbc55db1 100644
+--- a/test/data/manifests/rhel_91-x86_64-gce-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-gce-boot.json
+@@ -4807,6 +4807,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "net.ifnames=0 biosdevname=0 scsi_mod.use_blk_mq=Y console=ttyS0,38400n8d",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-x86_64-gce_rhui-boot.json b/test/data/manifests/rhel_91-x86_64-gce_rhui-boot.json
+index 86818aa73..d84d9626b 100644
+--- a/test/data/manifests/rhel_91-x86_64-gce_rhui-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-gce_rhui-boot.json
+@@ -4813,6 +4813,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "net.ifnames=0 biosdevname=0 scsi_mod.use_blk_mq=Y console=ttyS0,38400n8d",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-x86_64-oci-boot.json b/test/data/manifests/rhel_91-x86_64-oci-boot.json
+index edd12c549..04025c657 100644
+--- a/test/data/manifests/rhel_91-x86_64-oci-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-oci-boot.json
+@@ -4934,6 +4934,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-x86_64-openstack-boot.json b/test/data/manifests/rhel_91-x86_64-openstack-boot.json
+index 362daefef..c56b8ee50 100644
+--- a/test/data/manifests/rhel_91-x86_64-openstack-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-openstack-boot.json
+@@ -4918,6 +4918,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-x86_64-qcow2-boot.json b/test/data/manifests/rhel_91-x86_64-qcow2-boot.json
+index ec8199c2a..749ac00e8 100644
+--- a/test/data/manifests/rhel_91-x86_64-qcow2-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-qcow2-boot.json
+@@ -4955,6 +4955,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-x86_64-qcow2_customize-boot.json b/test/data/manifests/rhel_91-x86_64-qcow2_customize-boot.json
+index edb47951e..a6fa8cd0b 100644
+--- a/test/data/manifests/rhel_91-x86_64-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-qcow2_customize-boot.json
+@@ -5665,6 +5665,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-x86_64-vhd-boot.json b/test/data/manifests/rhel_91-x86_64-vhd-boot.json
+index dee4a8499..df30f0ec2 100644
+--- a/test/data/manifests/rhel_91-x86_64-vhd-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-vhd-boot.json
+@@ -6552,6 +6552,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_91-x86_64-vmdk-boot.json b/test/data/manifests/rhel_91-x86_64-vmdk-boot.json
+index 2716c61dd..7de7d36c6 100644
+--- a/test/data/manifests/rhel_91-x86_64-vmdk-boot.json
++++ b/test/data/manifests/rhel_91-x86_64-vmdk-boot.json
+@@ -4918,6 +4918,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-aarch64-ami-boot.json b/test/data/manifests/rhel_92-aarch64-ami-boot.json
+index eed47663d..978e768be 100644
+--- a/test/data/manifests/rhel_92-aarch64-ami-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-ami-boot.json
+@@ -4559,6 +4559,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 iommu.strict=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_92-aarch64-azure_rhui-boot.json b/test/data/manifests/rhel_92-aarch64-azure_rhui-boot.json
+index cf60b439a..925ed4504 100644
+--- a/test/data/manifests/rhel_92-aarch64-azure_rhui-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-azure_rhui-boot.json
+@@ -6305,6 +6305,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_92-aarch64-ec2-boot.json b/test/data/manifests/rhel_92-aarch64-ec2-boot.json
+index 40e417579..04f1a87f7 100644
+--- a/test/data/manifests/rhel_92-aarch64-ec2-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-ec2-boot.json
+@@ -4592,6 +4592,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 iommu.strict=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_92-aarch64-edge_raw_image-boot.json b/test/data/manifests/rhel_92-aarch64-edge_raw_image-boot.json
+index 90736ecee..0757738c2 100644
+--- a/test/data/manifests/rhel_92-aarch64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-edge_raw_image-boot.json
+@@ -2344,7 +2344,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4,rw,coreos.no_persist_ip,ignition.platform.id=metal,$ignition_firstboot",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4 rw coreos.no_persist_ip ignition.platform.id=metal $ignition_firstboot",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_92-aarch64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_92-aarch64-edge_simplified_installer-boot.json
+index f3fee36b2..1e4d75d87 100644
+--- a/test/data/manifests/rhel_92-aarch64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-edge_simplified_installer-boot.json
+@@ -2728,7 +2728,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4,rw,coreos.no_persist_ip,ignition.platform.id=metal,$ignition_firstboot",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4 rw coreos.no_persist_ip ignition.platform.id=metal $ignition_firstboot",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_92-aarch64-openstack-boot.json b/test/data/manifests/rhel_92-aarch64-openstack-boot.json
+index cbc134748..5feeedb8b 100644
+--- a/test/data/manifests/rhel_92-aarch64-openstack-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-openstack-boot.json
+@@ -4534,6 +4534,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_92-aarch64-qcow2-boot.json b/test/data/manifests/rhel_92-aarch64-qcow2-boot.json
+index 02930f8f8..5c13b5173 100644
+--- a/test/data/manifests/rhel_92-aarch64-qcow2-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-qcow2-boot.json
+@@ -4667,6 +4667,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_92-aarch64-qcow2_customize-boot.json b/test/data/manifests/rhel_92-aarch64-qcow2_customize-boot.json
+index db8a03eeb..9dfef9c62 100644
+--- a/test/data/manifests/rhel_92-aarch64-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-qcow2_customize-boot.json
+@@ -5032,6 +5032,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_92-aarch64-vhd-boot.json b/test/data/manifests/rhel_92-aarch64-vhd-boot.json
+index aa9854fd7..1da6c2055 100644
+--- a/test/data/manifests/rhel_92-aarch64-vhd-boot.json
++++ b/test/data/manifests/rhel_92-aarch64-vhd-boot.json
+@@ -6224,6 +6224,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "uefi": {
+                 "vendor": "redhat",
+                 "unified": true
+diff --git a/test/data/manifests/rhel_92-ppc64le-qcow2-boot.json b/test/data/manifests/rhel_92-ppc64le-qcow2-boot.json
+index 77f732b8d..eb214bef6 100644
+--- a/test/data/manifests/rhel_92-ppc64le-qcow2-boot.json
++++ b/test/data/manifests/rhel_92-ppc64le-qcow2-boot.json
+@@ -5316,6 +5316,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-177.el9.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_92-ppc64le-qcow2_customize-boot.json b/test/data/manifests/rhel_92-ppc64le-qcow2_customize-boot.json
+index 6cba4a369..27ed0537f 100644
+--- a/test/data/manifests/rhel_92-ppc64le-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_92-ppc64le-qcow2_customize-boot.json
+@@ -5665,6 +5665,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "powerpc-ieee1275",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-177.el9.ppc64le",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_92-x86_64-ami-boot.json b/test/data/manifests/rhel_92-x86_64-ami-boot.json
+index 20f4c7cfc..20f8b956f 100644
+--- a/test/data/manifests/rhel_92-x86_64-ami-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-ami-boot.json
+@@ -4539,6 +4539,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-226.el9.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_92-x86_64-azure_rhui-boot.json b/test/data/manifests/rhel_92-x86_64-azure_rhui-boot.json
+index e0fc05eaa..16a8076dc 100644
+--- a/test/data/manifests/rhel_92-x86_64-azure_rhui-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-azure_rhui-boot.json
+@@ -6609,6 +6609,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-x86_64-ec2-boot.json b/test/data/manifests/rhel_92-x86_64-ec2-boot.json
+index 39ca19a0e..735049b09 100644
+--- a/test/data/manifests/rhel_92-x86_64-ec2-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-ec2-boot.json
+@@ -4574,6 +4574,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-226.el9.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_92-x86_64-ec2_ha-boot.json b/test/data/manifests/rhel_92-x86_64-ec2_ha-boot.json
+index 41dea1ed9..ab2adf0c6 100644
+--- a/test/data/manifests/rhel_92-x86_64-ec2_ha-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-ec2_ha-boot.json
+@@ -6018,6 +6018,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-226.el9.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_92-x86_64-ec2_sap-boot.json b/test/data/manifests/rhel_92-x86_64-ec2_sap-boot.json
+index 5ebf1b6a3..b84bb8fc2 100644
+--- a/test/data/manifests/rhel_92-x86_64-ec2_sap-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-ec2_sap-boot.json
+@@ -8525,6 +8525,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=ttyS0,115200n8 console=tty0 net.ifnames=0 rd.blacklist=nouveau nvme_core.io_timeout=4294967295 processor.max_cstate=1 intel_idle.max_cstate=1",
+               "legacy": "i386-pc",
+               "saved_entry": "ffffffffffffffffffffffffffffffff-5.14.0-226.el9.x86_64",
+               "write_cmdline": false,
+diff --git a/test/data/manifests/rhel_92-x86_64-edge_raw_image-boot.json b/test/data/manifests/rhel_92-x86_64-edge_raw_image-boot.json
+index 6b241c10c..462645461 100644
+--- a/test/data/manifests/rhel_92-x86_64-edge_raw_image-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-edge_raw_image-boot.json
+@@ -2464,7 +2464,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4,rw,coreos.no_persist_ip,ignition.platform.id=metal,$ignition_firstboot",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4 rw coreos.no_persist_ip ignition.platform.id=metal $ignition_firstboot",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-x86_64-edge_simplified_installer-boot.json b/test/data/manifests/rhel_92-x86_64-edge_simplified_installer-boot.json
+index f8b3c5984..090db489f 100644
+--- a/test/data/manifests/rhel_92-x86_64-edge_simplified_installer-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-edge_simplified_installer-boot.json
+@@ -2776,7 +2776,7 @@
+             "options": {
+               "root_fs_uuid": "fb180daf-48a7-4ee0-b10d-394651850fd4",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
+-              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75,modprobe.blacklist=vc4,rw,coreos.no_persist_ip,ignition.platform.id=metal,$ignition_firstboot",
++              "kernel_opts": "luks.uuid=6e4ff95f-f662-45ee-a82a-bdf44a2d0b75 modprobe.blacklist=vc4 rw coreos.no_persist_ip ignition.platform.id=metal $ignition_firstboot",
+               "uefi": {
+                 "vendor": "redhat",
+                 "install": true,
+diff --git a/test/data/manifests/rhel_92-x86_64-gce-boot.json b/test/data/manifests/rhel_92-x86_64-gce-boot.json
+index 0d5d1ae68..9ffdb1d71 100644
+--- a/test/data/manifests/rhel_92-x86_64-gce-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-gce-boot.json
+@@ -4847,6 +4847,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "net.ifnames=0 biosdevname=0 scsi_mod.use_blk_mq=Y console=ttyS0,38400n8d",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-x86_64-gce_rhui-boot.json b/test/data/manifests/rhel_92-x86_64-gce_rhui-boot.json
+index 733e6cb8b..1b0c14171 100644
+--- a/test/data/manifests/rhel_92-x86_64-gce_rhui-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-gce_rhui-boot.json
+@@ -4853,6 +4853,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "net.ifnames=0 biosdevname=0 scsi_mod.use_blk_mq=Y console=ttyS0,38400n8d",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-x86_64-oci-boot.json b/test/data/manifests/rhel_92-x86_64-oci-boot.json
+index 801e4dfd5..daa78c361 100644
+--- a/test/data/manifests/rhel_92-x86_64-oci-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-oci-boot.json
+@@ -4926,6 +4926,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-x86_64-openstack-boot.json b/test/data/manifests/rhel_92-x86_64-openstack-boot.json
+index f5116049e..8feb57bc3 100644
+--- a/test/data/manifests/rhel_92-x86_64-openstack-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-openstack-boot.json
+@@ -4910,6 +4910,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-x86_64-qcow2-boot.json b/test/data/manifests/rhel_92-x86_64-qcow2-boot.json
+index 8b13d4cc1..e39389bb3 100644
+--- a/test/data/manifests/rhel_92-x86_64-qcow2-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-qcow2-boot.json
+@@ -4947,6 +4947,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-x86_64-qcow2_customize-boot.json b/test/data/manifests/rhel_92-x86_64-qcow2_customize-boot.json
+index 5360dddd5..a35bc43a6 100644
+--- a/test/data/manifests/rhel_92-x86_64-qcow2_customize-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-qcow2_customize-boot.json
+@@ -5392,6 +5392,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0 debug",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-x86_64-vhd-boot.json b/test/data/manifests/rhel_92-x86_64-vhd-boot.json
+index eaade6fbb..ee09389b2 100644
+--- a/test/data/manifests/rhel_92-x86_64-vhd-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-vhd-boot.json
+@@ -6544,6 +6544,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro console=tty1 console=ttyS0 earlyprintk=ttyS0 rootdelay=300",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+diff --git a/test/data/manifests/rhel_92-x86_64-vmdk-boot.json b/test/data/manifests/rhel_92-x86_64-vmdk-boot.json
+index 3a92c69b7..f6060b0ee 100644
+--- a/test/data/manifests/rhel_92-x86_64-vmdk-boot.json
++++ b/test/data/manifests/rhel_92-x86_64-vmdk-boot.json
+@@ -4910,6 +4910,7 @@
+             "options": {
+               "root_fs_uuid": "6e4ff95f-f662-45ee-a82a-bdf44a2d0b75",
+               "boot_fs_uuid": "0194fdc2-fa2f-4cc0-81d3-ff12045b73c8",
++              "kernel_opts": "ro net.ifnames=0",
+               "legacy": "i386-pc",
+               "uefi": {
+                 "vendor": "redhat",
+-- 
+2.39.2
+
