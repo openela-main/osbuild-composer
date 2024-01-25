@@ -1,0 +1,19 @@
+diff --git a/SPECS/osbuild-composer.spec b/SPECS/osbuild-composer.spec
+index 9318da0..82a5456 100644
+--- a/SPECS/osbuild-composer.spec
++++ b/SPECS/osbuild-composer.spec
+@@ -169,6 +169,14 @@ install -m 0644 -vp repositories/rhel-%{rhel}*                     %{buildroot}%
+ %endif
+ %endif
+ 
++%if 0%{?openela}
++%if 0%{?openela} >= 9
++install -m 0644 -vp repositories/openela-*                           %{buildroot}%{_datadir}/osbuild-composer/repositories/
++%else
++install -m 0644 -vp repositories/openela-8*                          %{buildroot}%{_datadir}/osbuild-composer/repositories/
++%endif
++%endif
++
+ # Fedora can build for all included fedora releases
+ %if 0%{?fedora}
+ install -m 0644 -vp repositories/fedora-*                          %{buildroot}%{_datadir}/osbuild-composer/repositories/
