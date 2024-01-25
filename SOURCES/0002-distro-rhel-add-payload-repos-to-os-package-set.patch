@@ -1,0 +1,3803 @@
+From 772ed6506029dc323756720bd03bab40fb942565 Mon Sep 17 00:00:00 2001
+From: Sanne Raymaekers <sanne.raymaekers@gmail.com>
+Date: Fri, 10 Mar 2023 15:43:36 +0100
+Subject: [PATCH 2/3] distro/rhel: add payload repos to os package set
+
+Before instantiating the manifest, any repositories that contain a
+package set key contained in `PayloadPackageSets()` should be added to
+the os package set in order to correctly generate the `org.osbuild.rpm`
+stage for the os pipeline.
+
+Otherwise options like GPG keys are not set correctly.
+
+Fixes #3326
+---
+ go.mod                                        |   5 +-
+ go.sum                                        |  10 +-
+ internal/distro/distro_test.go                |  34 +-
+ internal/distro/fedora/distro.go              |  21 +-
+ internal/distro/rhel7/distro.go               |  24 +-
+ internal/distro/rhel8/imagetype.go            |  24 +-
+ internal/distro/rhel9/imagetype.go            |  24 +-
+ vendor/golang.org/x/exp/LICENSE               |  27 +
+ vendor/golang.org/x/exp/PATENTS               |  22 +
+ .../x/exp/constraints/constraints.go          |  50 ++
+ vendor/golang.org/x/exp/slices/slices.go      | 258 ++++++++++
+ vendor/golang.org/x/exp/slices/sort.go        | 126 +++++
+ vendor/golang.org/x/exp/slices/zsortfunc.go   | 479 +++++++++++++++++
+ .../golang.org/x/exp/slices/zsortordered.go   | 481 ++++++++++++++++++
+ vendor/golang.org/x/mod/module/module.go      |   4 +-
+ .../internal/fastwalk/fastwalk_darwin.go      | 119 +++++
+ .../internal/fastwalk/fastwalk_dirent_ino.go  |   6 +-
+ .../fastwalk/fastwalk_dirent_namlen_bsd.go    |   4 +-
+ .../tools/internal/fastwalk/fastwalk_unix.go  |   4 +-
+ .../x/tools/internal/gocommand/invoke.go      |  83 ++-
+ .../x/tools/internal/gocommand/version.go     |  13 +-
+ .../x/tools/internal/imports/fix.go           |   9 +-
+ .../x/tools/internal/imports/mod.go           |  22 +-
+ .../x/tools/internal/imports/zstdlib.go       | 418 +++++++++------
+ vendor/modules.txt                            |   8 +-
+ 25 files changed, 2081 insertions(+), 194 deletions(-)
+ create mode 100644 vendor/golang.org/x/exp/LICENSE
+ create mode 100644 vendor/golang.org/x/exp/PATENTS
+ create mode 100644 vendor/golang.org/x/exp/constraints/constraints.go
+ create mode 100644 vendor/golang.org/x/exp/slices/slices.go
+ create mode 100644 vendor/golang.org/x/exp/slices/sort.go
+ create mode 100644 vendor/golang.org/x/exp/slices/zsortfunc.go
+ create mode 100644 vendor/golang.org/x/exp/slices/zsortordered.go
+ create mode 100644 vendor/golang.org/x/tools/internal/fastwalk/fastwalk_darwin.go
+
+diff --git a/go.mod b/go.mod
+index 2d7559a5d..c667d94d6 100644
+--- a/go.mod
++++ b/go.mod
+@@ -44,6 +44,7 @@ require (
+ 	github.com/stretchr/testify v1.8.1
+ 	github.com/ubccr/kerby v0.0.0-20170626144437-201a958fc453
+ 	github.com/vmware/govmomi v0.29.0
++	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
+ 	golang.org/x/oauth2 v0.0.0-20220909003341-f21342109be1
+ 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
+ 	golang.org/x/sys v0.3.0
+@@ -149,12 +150,12 @@ require (
+ 	go.mozilla.org/pkcs7 v0.0.0-20200128120323-432b2356ecb1 // indirect
+ 	go.opencensus.io v0.23.0 // indirect
+ 	golang.org/x/crypto v0.2.0 // indirect
+-	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
++	golang.org/x/mod v0.6.0 // indirect
+ 	golang.org/x/net v0.4.0 // indirect
+ 	golang.org/x/term v0.3.0 // indirect
+ 	golang.org/x/text v0.5.0 // indirect
+ 	golang.org/x/time v0.2.0 // indirect
+-	golang.org/x/tools v0.1.12 // indirect
++	golang.org/x/tools v0.2.0 // indirect
+ 	golang.org/x/xerrors v0.0.0-20220609144429-65e65417b02f // indirect
+ 	google.golang.org/appengine v1.6.7 // indirect
+ 	google.golang.org/grpc v1.49.0 // indirect
+diff --git a/go.sum b/go.sum
+index 62eabdff5..72d378086 100644
+--- a/go.sum
++++ b/go.sum
+@@ -1464,6 +1464,8 @@ golang.org/x/exp v0.0.0-20200119233911-0405dc783f0a/go.mod h1:2RIsYlXP63K8oxa1u0
+ golang.org/x/exp v0.0.0-20200207192155-f17229e696bd/go.mod h1:J/WKrq2StrnmMY6+EHIKF9dgMWnmCNThgcyBT1FY9mM=
+ golang.org/x/exp v0.0.0-20200224162631-6cc2880d07d6/go.mod h1:3jZMyOhIsHpP37uCMkUooju7aAi5cS1Q23tOzKc+0MU=
+ golang.org/x/exp v0.0.0-20200331195152-e8c3332aa8e5/go.mod h1:4M0jN8W1tt0AVLNr8HDosyJCDCDuyL9N9+3m7wDWgKw=
++golang.org/x/exp v0.0.0-20230307190834-24139beb5833 h1:SChBja7BCQewoTAU7IgvucQKMIXrEpFxNMs0spT3/5s=
++golang.org/x/exp v0.0.0-20230307190834-24139beb5833/go.mod h1:CxIveKay+FTh1D0yPZemJVgC/95VzuuOLq5Qi4xnoYc=
+ golang.org/x/image v0.0.0-20190227222117-0694c2d4d067/go.mod h1:kZ7UVZpmo3dzQBMxlp+ypCbDeSB+sBbTgSJuh5dn5js=
+ golang.org/x/image v0.0.0-20190802002840-cff245a6509b/go.mod h1:FeLwcggjj3mMvU+oOTbSwawSJRM1uh48EjtB4UJZlP0=
+ golang.org/x/lint v0.0.0-20181026193005-c67002cb31c3/go.mod h1:UVdnD1Gm6xHRNCYTkRU2/jEulfH38KcIWyp/GAMgvoE=
+@@ -1491,8 +1493,8 @@ golang.org/x/mod v0.4.1/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
+ golang.org/x/mod v0.4.2/go.mod h1:s0Qsj1ACt9ePp/hMypM3fl4fZqREWJwdYDEqhRiZZUA=
+ golang.org/x/mod v0.5.0/go.mod h1:5OXOZSfqPIIbmVBIIKWRFfZjPR0E5r58TLhUjH0a2Ro=
+ golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3/go.mod h1:3p9vT2HGsQu2K1YbXdKPJLVgG5VJdoTa1poYQBtP1AY=
+-golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 h1:6zppjxzCulZykYSLyVDYbneBfbaBIQPYMevg0bEwv2s=
+-golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4/go.mod h1:jJ57K6gSWd91VN4djpZkiMVwK6gcyfeH4XE8wZrZaV4=
++golang.org/x/mod v0.6.0 h1:b9gGHsz9/HhJ3HF5DHQytPpuwocVTChQJK3AvoLRD5I=
++golang.org/x/mod v0.6.0/go.mod h1:4mET923SAdbXp2ki8ey+zGs1SLqsuM2Y0uvdZR/fUNI=
+ golang.org/x/net v0.0.0-20180724234803-3673e40ba225/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
+ golang.org/x/net v0.0.0-20180826012351-8a410e7b638d/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
+ golang.org/x/net v0.0.0-20180906233101-161cd47e91fd/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
+@@ -1876,8 +1878,8 @@ golang.org/x/tools v0.1.5/go.mod h1:o0xws9oXOQQZyjljx8fwUC0k7L1pTE6eaCbjGeHmOkk=
+ golang.org/x/tools v0.1.6/go.mod h1:LGqMHiF4EqQNHR1JncWGqT5BVaXmza+X+BDGol+dOxo=
+ golang.org/x/tools v0.1.7/go.mod h1:LGqMHiF4EqQNHR1JncWGqT5BVaXmza+X+BDGol+dOxo=
+ golang.org/x/tools v0.1.10/go.mod h1:Uh6Zz+xoGYZom868N8YTex3t7RhtHDBrE8Gzo9bV56E=
+-golang.org/x/tools v0.1.12 h1:VveCTK38A2rkS8ZqFY25HIDFscX5X9OoEhJd3quQmXU=
+-golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=
++golang.org/x/tools v0.2.0 h1:G6AHpWxTMGY1KyEYoAQ5WTtIekUUvDNjan3ugu60JvE=
++golang.org/x/tools v0.2.0/go.mod h1:y4OqIKeOV/fWJetJ8bXPU1sEVniLMIyDAZWeHdV+NTA=
+ golang.org/x/xerrors v0.0.0-20190410155217-1f06c39b4373/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+ golang.org/x/xerrors v0.0.0-20190513163551-3ee3066db522/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+ golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+diff --git a/internal/distro/distro_test.go b/internal/distro/distro_test.go
+index aa747e997..1e92f8f0b 100644
+--- a/internal/distro/distro_test.go
++++ b/internal/distro/distro_test.go
+@@ -157,8 +157,16 @@ func TestImageType_PackageSetsChains(t *testing.T) {
+ // results.
+ func TestImageTypePipelineNames(t *testing.T) {
+ 	// types for parsing the opaque manifest with just the fields we care about
++	type rpmStageOptions struct {
++		GPGKeys []string `json:"gpgkeys"`
++	}
++	type stage struct {
++		Type    string          `json:"type"`
++		Options rpmStageOptions `json:"options"`
++	}
+ 	type pipeline struct {
+-		Name string `json:"name"`
++		Name   string  `json:"name"`
++		Stages []stage `json:"stages"`
+ 	}
+ 	type manifest struct {
+ 		Pipelines []pipeline `json:"pipelines"`
+@@ -187,7 +195,17 @@ func TestImageTypePipelineNames(t *testing.T) {
+ 						Customizations: customizations,
+ 					}
+ 					options := distro.ImageOptions{}
+-					repos := make([]rpmmd.RepoConfig, 0)
++					// this repo's gpg keys should get included in the os
++					// pipeline's rpm stage
++					repos := []rpmmd.RepoConfig{
++						{
++							Name:        "payload",
++							BaseURL:     "http://payload.example.com",
++							PackageSets: imageType.PayloadPackageSets(),
++							GPGKeys:     []string{"payload-gpg-key"},
++							CheckGPG:    true,
++						},
++					}
+ 					containers := make([]container.Spec, 0)
+ 					seed := int64(0)
+ 
+@@ -224,6 +242,18 @@ func TestImageTypePipelineNames(t *testing.T) {
+ 						// manifest pipeline names should be identical to the ones
+ 						// defined in the image type and in the same order
+ 						require.Equal(allPipelines[idx], pm.Pipelines[idx].Name)
++
++						if pm.Pipelines[idx].Name == "os" {
++							rpmStagePresent := false
++							for _, s := range pm.Pipelines[idx].Stages {
++								if s.Type == "org.osbuild.rpm" {
++									rpmStagePresent = true
++									require.Equal(repos[0].GPGKeys, s.Options.GPGKeys)
++								}
++							}
++							// make sure the gpg keys check was reached
++							require.True(rpmStagePresent)
++						}
+ 					}
+ 
+ 					// The last pipeline should match the export pipeline.
+diff --git a/internal/distro/fedora/distro.go b/internal/distro/fedora/distro.go
+index 163087d50..c6c733a91 100644
+--- a/internal/distro/fedora/distro.go
++++ b/internal/distro/fedora/distro.go
+@@ -9,6 +9,7 @@ import (
+ 	"strings"
+ 
+ 	"github.com/sirupsen/logrus"
++	"golang.org/x/exp/slices"
+ 
+ 	"github.com/osbuild/osbuild-composer/internal/blueprint"
+ 	"github.com/osbuild/osbuild-composer/internal/common"
+@@ -730,7 +731,25 @@ func (t *imageType) Manifest(customizations *blueprint.Customizations,
+ 	}
+ 	bp.Customizations = customizations
+ 
+-	manifest, err := t.initializeManifest(bp, options, repos, nil, containers, seed)
++	// the os pipeline filters repos based on the `osPkgsKey` package set, merge the repos which
++	// contain a payload package set into the `osPkgsKey`, so those repos are included when
++	// building the rpm stage in the os pipeline
++	// TODO: roll this into workloads
++	mergedRepos := make([]rpmmd.RepoConfig, 0, len(repos))
++	for _, repo := range repos {
++		for _, pkgsKey := range t.PayloadPackageSets() {
++			// If the repo already contains the osPkgsKey, skip
++			if slices.Contains(repo.PackageSets, osPkgsKey) {
++				break
++			}
++			if slices.Contains(repo.PackageSets, pkgsKey) {
++				repo.PackageSets = append(repo.PackageSets, osPkgsKey)
++			}
++		}
++		mergedRepos = append(mergedRepos, repo)
++	}
++
++	manifest, err := t.initializeManifest(bp, options, mergedRepos, nil, containers, seed)
+ 	if err != nil {
+ 		return distro.Manifest{}, err
+ 	}
+diff --git a/internal/distro/rhel7/distro.go b/internal/distro/rhel7/distro.go
+index 65c12d3c4..32a965793 100644
+--- a/internal/distro/rhel7/distro.go
++++ b/internal/distro/rhel7/distro.go
+@@ -7,6 +7,9 @@ import (
+ 	"sort"
+ 	"strings"
+ 
++	"github.com/sirupsen/logrus"
++	"golang.org/x/exp/slices"
++
+ 	"github.com/osbuild/osbuild-composer/internal/blueprint"
+ 	"github.com/osbuild/osbuild-composer/internal/common"
+ 	"github.com/osbuild/osbuild-composer/internal/container"
+@@ -21,7 +24,6 @@ import (
+ 	"github.com/osbuild/osbuild-composer/internal/rpmmd"
+ 	"github.com/osbuild/osbuild-composer/internal/runner"
+ 	"github.com/osbuild/osbuild-composer/internal/workload"
+-	"github.com/sirupsen/logrus"
+ )
+ 
+ const (
+@@ -391,7 +393,25 @@ func (t *imageType) Manifest(customizations *blueprint.Customizations,
+ 	}
+ 	bp.Customizations = customizations
+ 
+-	manifest, err := t.initializeManifest(bp, options, repos, nil, containers, seed)
++	// the os pipeline filters repos based on the `osPkgsKey` package set, merge the repos which
++	// contain a payload package set into the `osPkgsKey`, so those repos are included when
++	// building the rpm stage in the os pipeline
++	// TODO: roll this into workloads
++	mergedRepos := make([]rpmmd.RepoConfig, 0, len(repos))
++	for _, repo := range repos {
++		for _, pkgsKey := range t.PayloadPackageSets() {
++			// If the repo already contains the osPkgsKey, skip
++			if slices.Contains(repo.PackageSets, osPkgsKey) {
++				break
++			}
++			if slices.Contains(repo.PackageSets, pkgsKey) {
++				repo.PackageSets = append(repo.PackageSets, osPkgsKey)
++			}
++		}
++		mergedRepos = append(mergedRepos, repo)
++	}
++
++	manifest, err := t.initializeManifest(bp, options, mergedRepos, nil, containers, seed)
+ 	if err != nil {
+ 		return distro.Manifest{}, err
+ 	}
+diff --git a/internal/distro/rhel8/imagetype.go b/internal/distro/rhel8/imagetype.go
+index a81089af2..597f4d045 100644
+--- a/internal/distro/rhel8/imagetype.go
++++ b/internal/distro/rhel8/imagetype.go
+@@ -6,6 +6,9 @@ import (
+ 	"math/rand"
+ 	"strings"
+ 
++	"github.com/sirupsen/logrus"
++	"golang.org/x/exp/slices"
++
+ 	"github.com/osbuild/osbuild-composer/internal/blueprint"
+ 	"github.com/osbuild/osbuild-composer/internal/common"
+ 	"github.com/osbuild/osbuild-composer/internal/container"
+@@ -19,7 +22,6 @@ import (
+ 	"github.com/osbuild/osbuild-composer/internal/platform"
+ 	"github.com/osbuild/osbuild-composer/internal/rpmmd"
+ 	"github.com/osbuild/osbuild-composer/internal/workload"
+-	"github.com/sirupsen/logrus"
+ )
+ 
+ const (
+@@ -238,7 +240,25 @@ func (t *imageType) Manifest(customizations *blueprint.Customizations,
+ 	}
+ 	bp.Customizations = customizations
+ 
+-	manifest, err := t.initializeManifest(bp, options, repos, nil, containers, seed)
++	// the os pipeline filters repos based on the `osPkgsKey` package set, merge the repos which
++	// contain a payload package set into the `osPkgsKey`, so those repos are included when
++	// building the rpm stage in the os pipeline
++	// TODO: roll this into workloads
++	mergedRepos := make([]rpmmd.RepoConfig, 0, len(repos))
++	for _, repo := range repos {
++		for _, pkgsKey := range t.PayloadPackageSets() {
++			// If the repo already contains the osPkgsKey, skip
++			if slices.Contains(repo.PackageSets, osPkgsKey) {
++				break
++			}
++			if slices.Contains(repo.PackageSets, pkgsKey) {
++				repo.PackageSets = append(repo.PackageSets, osPkgsKey)
++			}
++		}
++		mergedRepos = append(mergedRepos, repo)
++	}
++
++	manifest, err := t.initializeManifest(bp, options, mergedRepos, nil, containers, seed)
+ 	if err != nil {
+ 		return distro.Manifest{}, err
+ 	}
+diff --git a/internal/distro/rhel9/imagetype.go b/internal/distro/rhel9/imagetype.go
+index b90365b7a..b10dae7fe 100644
+--- a/internal/distro/rhel9/imagetype.go
++++ b/internal/distro/rhel9/imagetype.go
+@@ -6,6 +6,9 @@ import (
+ 	"math/rand"
+ 	"strings"
+ 
++	"github.com/sirupsen/logrus"
++	"golang.org/x/exp/slices"
++
+ 	"github.com/osbuild/osbuild-composer/internal/blueprint"
+ 	"github.com/osbuild/osbuild-composer/internal/common"
+ 	"github.com/osbuild/osbuild-composer/internal/container"
+@@ -19,7 +22,6 @@ import (
+ 	"github.com/osbuild/osbuild-composer/internal/platform"
+ 	"github.com/osbuild/osbuild-composer/internal/rpmmd"
+ 	"github.com/osbuild/osbuild-composer/internal/workload"
+-	"github.com/sirupsen/logrus"
+ )
+ 
+ const (
+@@ -238,7 +240,25 @@ func (t *imageType) Manifest(customizations *blueprint.Customizations,
+ 	}
+ 	bp.Customizations = customizations
+ 
+-	manifest, err := t.initializeManifest(bp, options, repos, nil, containers, seed)
++	// the os pipeline filters repos based on the `osPkgsKey` package set, merge the repos which
++	// contain a payload package set into the `osPkgsKey`, so those repos are included when
++	// building the rpm stage in the os pipeline
++	// TODO: roll this into workloads
++	mergedRepos := make([]rpmmd.RepoConfig, 0, len(repos))
++	for _, repo := range repos {
++		for _, pkgsKey := range t.PayloadPackageSets() {
++			// If the repo already contains the osPkgsKey, skip
++			if slices.Contains(repo.PackageSets, osPkgsKey) {
++				break
++			}
++			if slices.Contains(repo.PackageSets, pkgsKey) {
++				repo.PackageSets = append(repo.PackageSets, osPkgsKey)
++			}
++		}
++		mergedRepos = append(mergedRepos, repo)
++	}
++
++	manifest, err := t.initializeManifest(bp, options, mergedRepos, nil, containers, seed)
+ 	if err != nil {
+ 		return distro.Manifest{}, err
+ 	}
+diff --git a/vendor/golang.org/x/exp/LICENSE b/vendor/golang.org/x/exp/LICENSE
+new file mode 100644
+index 000000000..6a66aea5e
+--- /dev/null
++++ b/vendor/golang.org/x/exp/LICENSE
+@@ -0,0 +1,27 @@
++Copyright (c) 2009 The Go Authors. All rights reserved.
++
++Redistribution and use in source and binary forms, with or without
++modification, are permitted provided that the following conditions are
++met:
++
++   * Redistributions of source code must retain the above copyright
++notice, this list of conditions and the following disclaimer.
++   * Redistributions in binary form must reproduce the above
++copyright notice, this list of conditions and the following disclaimer
++in the documentation and/or other materials provided with the
++distribution.
++   * Neither the name of Google Inc. nor the names of its
++contributors may be used to endorse or promote products derived from
++this software without specific prior written permission.
++
++THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+diff --git a/vendor/golang.org/x/exp/PATENTS b/vendor/golang.org/x/exp/PATENTS
+new file mode 100644
+index 000000000..733099041
+--- /dev/null
++++ b/vendor/golang.org/x/exp/PATENTS
+@@ -0,0 +1,22 @@
++Additional IP Rights Grant (Patents)
++
++"This implementation" means the copyrightable works distributed by
++Google as part of the Go project.
++
++Google hereby grants to You a perpetual, worldwide, non-exclusive,
++no-charge, royalty-free, irrevocable (except as stated in this section)
++patent license to make, have made, use, offer to sell, sell, import,
++transfer and otherwise run, modify and propagate the contents of this
++implementation of Go, where such license applies only to those patent
++claims, both currently owned or controlled by Google and acquired in
++the future, licensable by Google that are necessarily infringed by this
++implementation of Go.  This grant does not include claims that would be
++infringed only as a consequence of further modification of this
++implementation.  If you or your agent or exclusive licensee institute or
++order or agree to the institution of patent litigation against any
++entity (including a cross-claim or counterclaim in a lawsuit) alleging
++that this implementation of Go or any code incorporated within this
++implementation of Go constitutes direct or contributory patent
++infringement, or inducement of patent infringement, then any patent
++rights granted to you under this License for this implementation of Go
++shall terminate as of the date such litigation is filed.
+diff --git a/vendor/golang.org/x/exp/constraints/constraints.go b/vendor/golang.org/x/exp/constraints/constraints.go
+new file mode 100644
+index 000000000..2c033dff4
+--- /dev/null
++++ b/vendor/golang.org/x/exp/constraints/constraints.go
+@@ -0,0 +1,50 @@
++// Copyright 2021 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++// Package constraints defines a set of useful constraints to be used
++// with type parameters.
++package constraints
++
++// Signed is a constraint that permits any signed integer type.
++// If future releases of Go add new predeclared signed integer types,
++// this constraint will be modified to include them.
++type Signed interface {
++	~int | ~int8 | ~int16 | ~int32 | ~int64
++}
++
++// Unsigned is a constraint that permits any unsigned integer type.
++// If future releases of Go add new predeclared unsigned integer types,
++// this constraint will be modified to include them.
++type Unsigned interface {
++	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
++}
++
++// Integer is a constraint that permits any integer type.
++// If future releases of Go add new predeclared integer types,
++// this constraint will be modified to include them.
++type Integer interface {
++	Signed | Unsigned
++}
++
++// Float is a constraint that permits any floating-point type.
++// If future releases of Go add new predeclared floating-point types,
++// this constraint will be modified to include them.
++type Float interface {
++	~float32 | ~float64
++}
++
++// Complex is a constraint that permits any complex numeric type.
++// If future releases of Go add new predeclared complex numeric types,
++// this constraint will be modified to include them.
++type Complex interface {
++	~complex64 | ~complex128
++}
++
++// Ordered is a constraint that permits any ordered type: any type
++// that supports the operators < <= >= >.
++// If future releases of Go add new ordered types,
++// this constraint will be modified to include them.
++type Ordered interface {
++	Integer | Float | ~string
++}
+diff --git a/vendor/golang.org/x/exp/slices/slices.go b/vendor/golang.org/x/exp/slices/slices.go
+new file mode 100644
+index 000000000..cff0cd49e
+--- /dev/null
++++ b/vendor/golang.org/x/exp/slices/slices.go
+@@ -0,0 +1,258 @@
++// Copyright 2021 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++// Package slices defines various functions useful with slices of any type.
++// Unless otherwise specified, these functions all apply to the elements
++// of a slice at index 0 <= i < len(s).
++//
++// Note that the less function in IsSortedFunc, SortFunc, SortStableFunc requires a
++// strict weak ordering (https://en.wikipedia.org/wiki/Weak_ordering#Strict_weak_orderings),
++// or the sorting may fail to sort correctly. A common case is when sorting slices of
++// floating-point numbers containing NaN values.
++package slices
++
++import "golang.org/x/exp/constraints"
++
++// Equal reports whether two slices are equal: the same length and all
++// elements equal. If the lengths are different, Equal returns false.
++// Otherwise, the elements are compared in increasing index order, and the
++// comparison stops at the first unequal pair.
++// Floating point NaNs are not considered equal.
++func Equal[E comparable](s1, s2 []E) bool {
++	if len(s1) != len(s2) {
++		return false
++	}
++	for i := range s1 {
++		if s1[i] != s2[i] {
++			return false
++		}
++	}
++	return true
++}
++
++// EqualFunc reports whether two slices are equal using a comparison
++// function on each pair of elements. If the lengths are different,
++// EqualFunc returns false. Otherwise, the elements are compared in
++// increasing index order, and the comparison stops at the first index
++// for which eq returns false.
++func EqualFunc[E1, E2 any](s1 []E1, s2 []E2, eq func(E1, E2) bool) bool {
++	if len(s1) != len(s2) {
++		return false
++	}
++	for i, v1 := range s1 {
++		v2 := s2[i]
++		if !eq(v1, v2) {
++			return false
++		}
++	}
++	return true
++}
++
++// Compare compares the elements of s1 and s2.
++// The elements are compared sequentially, starting at index 0,
++// until one element is not equal to the other.
++// The result of comparing the first non-matching elements is returned.
++// If both slices are equal until one of them ends, the shorter slice is
++// considered less than the longer one.
++// The result is 0 if s1 == s2, -1 if s1 < s2, and +1 if s1 > s2.
++// Comparisons involving floating point NaNs are ignored.
++func Compare[E constraints.Ordered](s1, s2 []E) int {
++	s2len := len(s2)
++	for i, v1 := range s1 {
++		if i >= s2len {
++			return +1
++		}
++		v2 := s2[i]
++		switch {
++		case v1 < v2:
++			return -1
++		case v1 > v2:
++			return +1
++		}
++	}
++	if len(s1) < s2len {
++		return -1
++	}
++	return 0
++}
++
++// CompareFunc is like Compare but uses a comparison function
++// on each pair of elements. The elements are compared in increasing
++// index order, and the comparisons stop after the first time cmp
++// returns non-zero.
++// The result is the first non-zero result of cmp; if cmp always
++// returns 0 the result is 0 if len(s1) == len(s2), -1 if len(s1) < len(s2),
++// and +1 if len(s1) > len(s2).
++func CompareFunc[E1, E2 any](s1 []E1, s2 []E2, cmp func(E1, E2) int) int {
++	s2len := len(s2)
++	for i, v1 := range s1 {
++		if i >= s2len {
++			return +1
++		}
++		v2 := s2[i]
++		if c := cmp(v1, v2); c != 0 {
++			return c
++		}
++	}
++	if len(s1) < s2len {
++		return -1
++	}
++	return 0
++}
++
++// Index returns the index of the first occurrence of v in s,
++// or -1 if not present.
++func Index[E comparable](s []E, v E) int {
++	for i, vs := range s {
++		if v == vs {
++			return i
++		}
++	}
++	return -1
++}
++
++// IndexFunc returns the first index i satisfying f(s[i]),
++// or -1 if none do.
++func IndexFunc[E any](s []E, f func(E) bool) int {
++	for i, v := range s {
++		if f(v) {
++			return i
++		}
++	}
++	return -1
++}
++
++// Contains reports whether v is present in s.
++func Contains[E comparable](s []E, v E) bool {
++	return Index(s, v) >= 0
++}
++
++// ContainsFunc reports whether at least one
++// element e of s satisfies f(e).
++func ContainsFunc[E any](s []E, f func(E) bool) bool {
++	return IndexFunc(s, f) >= 0
++}
++
++// Insert inserts the values v... into s at index i,
++// returning the modified slice.
++// In the returned slice r, r[i] == v[0].
++// Insert panics if i is out of range.
++// This function is O(len(s) + len(v)).
++func Insert[S ~[]E, E any](s S, i int, v ...E) S {
++	tot := len(s) + len(v)
++	if tot <= cap(s) {
++		s2 := s[:tot]
++		copy(s2[i+len(v):], s[i:])
++		copy(s2[i:], v)
++		return s2
++	}
++	s2 := make(S, tot)
++	copy(s2, s[:i])
++	copy(s2[i:], v)
++	copy(s2[i+len(v):], s[i:])
++	return s2
++}
++
++// Delete removes the elements s[i:j] from s, returning the modified slice.
++// Delete panics if s[i:j] is not a valid slice of s.
++// Delete modifies the contents of the slice s; it does not create a new slice.
++// Delete is O(len(s)-j), so if many items must be deleted, it is better to
++// make a single call deleting them all together than to delete one at a time.
++// Delete might not modify the elements s[len(s)-(j-i):len(s)]. If those
++// elements contain pointers you might consider zeroing those elements so that
++// objects they reference can be garbage collected.
++func Delete[S ~[]E, E any](s S, i, j int) S {
++	_ = s[i:j] // bounds check
++
++	return append(s[:i], s[j:]...)
++}
++
++// Replace replaces the elements s[i:j] by the given v, and returns the
++// modified slice. Replace panics if s[i:j] is not a valid slice of s.
++func Replace[S ~[]E, E any](s S, i, j int, v ...E) S {
++	_ = s[i:j] // verify that i:j is a valid subslice
++	tot := len(s[:i]) + len(v) + len(s[j:])
++	if tot <= cap(s) {
++		s2 := s[:tot]
++		copy(s2[i+len(v):], s[j:])
++		copy(s2[i:], v)
++		return s2
++	}
++	s2 := make(S, tot)
++	copy(s2, s[:i])
++	copy(s2[i:], v)
++	copy(s2[i+len(v):], s[j:])
++	return s2
++}
++
++// Clone returns a copy of the slice.
++// The elements are copied using assignment, so this is a shallow clone.
++func Clone[S ~[]E, E any](s S) S {
++	// Preserve nil in case it matters.
++	if s == nil {
++		return nil
++	}
++	return append(S([]E{}), s...)
++}
++
++// Compact replaces consecutive runs of equal elements with a single copy.
++// This is like the uniq command found on Unix.
++// Compact modifies the contents of the slice s; it does not create a new slice.
++// When Compact discards m elements in total, it might not modify the elements
++// s[len(s)-m:len(s)]. If those elements contain pointers you might consider
++// zeroing those elements so that objects they reference can be garbage collected.
++func Compact[S ~[]E, E comparable](s S) S {
++	if len(s) < 2 {
++		return s
++	}
++	i := 1
++	last := s[0]
++	for _, v := range s[1:] {
++		if v != last {
++			s[i] = v
++			i++
++			last = v
++		}
++	}
++	return s[:i]
++}
++
++// CompactFunc is like Compact but uses a comparison function.
++func CompactFunc[S ~[]E, E any](s S, eq func(E, E) bool) S {
++	if len(s) < 2 {
++		return s
++	}
++	i := 1
++	last := s[0]
++	for _, v := range s[1:] {
++		if !eq(v, last) {
++			s[i] = v
++			i++
++			last = v
++		}
++	}
++	return s[:i]
++}
++
++// Grow increases the slice's capacity, if necessary, to guarantee space for
++// another n elements. After Grow(n), at least n elements can be appended
++// to the slice without another allocation. If n is negative or too large to
++// allocate the memory, Grow panics.
++func Grow[S ~[]E, E any](s S, n int) S {
++	if n < 0 {
++		panic("cannot be negative")
++	}
++	if n -= cap(s) - len(s); n > 0 {
++		// TODO(https://go.dev/issue/53888): Make using []E instead of S
++		// to workaround a compiler bug where the runtime.growslice optimization
++		// does not take effect. Revert when the compiler is fixed.
++		s = append([]E(s)[:cap(s)], make([]E, n)...)[:len(s)]
++	}
++	return s
++}
++
++// Clip removes unused capacity from the slice, returning s[:len(s):len(s)].
++func Clip[S ~[]E, E any](s S) S {
++	return s[:len(s):len(s)]
++}
+diff --git a/vendor/golang.org/x/exp/slices/sort.go b/vendor/golang.org/x/exp/slices/sort.go
+new file mode 100644
+index 000000000..f14f40da7
+--- /dev/null
++++ b/vendor/golang.org/x/exp/slices/sort.go
+@@ -0,0 +1,126 @@
++// Copyright 2022 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package slices
++
++import (
++	"math/bits"
++
++	"golang.org/x/exp/constraints"
++)
++
++// Sort sorts a slice of any ordered type in ascending order.
++// Sort may fail to sort correctly when sorting slices of floating-point
++// numbers containing Not-a-number (NaN) values.
++// Use slices.SortFunc(x, func(a, b float64) bool {return a < b || (math.IsNaN(a) && !math.IsNaN(b))})
++// instead if the input may contain NaNs.
++func Sort[E constraints.Ordered](x []E) {
++	n := len(x)
++	pdqsortOrdered(x, 0, n, bits.Len(uint(n)))
++}
++
++// SortFunc sorts the slice x in ascending order as determined by the less function.
++// This sort is not guaranteed to be stable.
++//
++// SortFunc requires that less is a strict weak ordering.
++// See https://en.wikipedia.org/wiki/Weak_ordering#Strict_weak_orderings.
++func SortFunc[E any](x []E, less func(a, b E) bool) {
++	n := len(x)
++	pdqsortLessFunc(x, 0, n, bits.Len(uint(n)), less)
++}
++
++// SortStableFunc sorts the slice x while keeping the original order of equal
++// elements, using less to compare elements.
++func SortStableFunc[E any](x []E, less func(a, b E) bool) {
++	stableLessFunc(x, len(x), less)
++}
++
++// IsSorted reports whether x is sorted in ascending order.
++func IsSorted[E constraints.Ordered](x []E) bool {
++	for i := len(x) - 1; i > 0; i-- {
++		if x[i] < x[i-1] {
++			return false
++		}
++	}
++	return true
++}
++
++// IsSortedFunc reports whether x is sorted in ascending order, with less as the
++// comparison function.
++func IsSortedFunc[E any](x []E, less func(a, b E) bool) bool {
++	for i := len(x) - 1; i > 0; i-- {
++		if less(x[i], x[i-1]) {
++			return false
++		}
++	}
++	return true
++}
++
++// BinarySearch searches for target in a sorted slice and returns the position
++// where target is found, or the position where target would appear in the
++// sort order; it also returns a bool saying whether the target is really found
++// in the slice. The slice must be sorted in increasing order.
++func BinarySearch[E constraints.Ordered](x []E, target E) (int, bool) {
++	// Inlining is faster than calling BinarySearchFunc with a lambda.
++	n := len(x)
++	// Define x[-1] < target and x[n] >= target.
++	// Invariant: x[i-1] < target, x[j] >= target.
++	i, j := 0, n
++	for i < j {
++		h := int(uint(i+j) >> 1) // avoid overflow when computing h
++		// i ≤ h < j
++		if x[h] < target {
++			i = h + 1 // preserves x[i-1] < target
++		} else {
++			j = h // preserves x[j] >= target
++		}
++	}
++	// i == j, x[i-1] < target, and x[j] (= x[i]) >= target  =>  answer is i.
++	return i, i < n && x[i] == target
++}
++
++// BinarySearchFunc works like BinarySearch, but uses a custom comparison
++// function. The slice must be sorted in increasing order, where "increasing" is
++// defined by cmp. cmp(a, b) is expected to return an integer comparing the two
++// parameters: 0 if a == b, a negative number if a < b and a positive number if
++// a > b.
++func BinarySearchFunc[E, T any](x []E, target T, cmp func(E, T) int) (int, bool) {
++	n := len(x)
++	// Define cmp(x[-1], target) < 0 and cmp(x[n], target) >= 0 .
++	// Invariant: cmp(x[i - 1], target) < 0, cmp(x[j], target) >= 0.
++	i, j := 0, n
++	for i < j {
++		h := int(uint(i+j) >> 1) // avoid overflow when computing h
++		// i ≤ h < j
++		if cmp(x[h], target) < 0 {
++			i = h + 1 // preserves cmp(x[i - 1], target) < 0
++		} else {
++			j = h // preserves cmp(x[j], target) >= 0
++		}
++	}
++	// i == j, cmp(x[i-1], target) < 0, and cmp(x[j], target) (= cmp(x[i], target)) >= 0  =>  answer is i.
++	return i, i < n && cmp(x[i], target) == 0
++}
++
++type sortedHint int // hint for pdqsort when choosing the pivot
++
++const (
++	unknownHint sortedHint = iota
++	increasingHint
++	decreasingHint
++)
++
++// xorshift paper: https://www.jstatsoft.org/article/view/v008i14/xorshift.pdf
++type xorshift uint64
++
++func (r *xorshift) Next() uint64 {
++	*r ^= *r << 13
++	*r ^= *r >> 17
++	*r ^= *r << 5
++	return uint64(*r)
++}
++
++func nextPowerOfTwo(length int) uint {
++	return 1 << bits.Len(uint(length))
++}
+diff --git a/vendor/golang.org/x/exp/slices/zsortfunc.go b/vendor/golang.org/x/exp/slices/zsortfunc.go
+new file mode 100644
+index 000000000..2a632476c
+--- /dev/null
++++ b/vendor/golang.org/x/exp/slices/zsortfunc.go
+@@ -0,0 +1,479 @@
++// Code generated by gen_sort_variants.go; DO NOT EDIT.
++
++// Copyright 2022 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package slices
++
++// insertionSortLessFunc sorts data[a:b] using insertion sort.
++func insertionSortLessFunc[E any](data []E, a, b int, less func(a, b E) bool) {
++	for i := a + 1; i < b; i++ {
++		for j := i; j > a && less(data[j], data[j-1]); j-- {
++			data[j], data[j-1] = data[j-1], data[j]
++		}
++	}
++}
++
++// siftDownLessFunc implements the heap property on data[lo:hi].
++// first is an offset into the array where the root of the heap lies.
++func siftDownLessFunc[E any](data []E, lo, hi, first int, less func(a, b E) bool) {
++	root := lo
++	for {
++		child := 2*root + 1
++		if child >= hi {
++			break
++		}
++		if child+1 < hi && less(data[first+child], data[first+child+1]) {
++			child++
++		}
++		if !less(data[first+root], data[first+child]) {
++			return
++		}
++		data[first+root], data[first+child] = data[first+child], data[first+root]
++		root = child
++	}
++}
++
++func heapSortLessFunc[E any](data []E, a, b int, less func(a, b E) bool) {
++	first := a
++	lo := 0
++	hi := b - a
++
++	// Build heap with greatest element at top.
++	for i := (hi - 1) / 2; i >= 0; i-- {
++		siftDownLessFunc(data, i, hi, first, less)
++	}
++
++	// Pop elements, largest first, into end of data.
++	for i := hi - 1; i >= 0; i-- {
++		data[first], data[first+i] = data[first+i], data[first]
++		siftDownLessFunc(data, lo, i, first, less)
++	}
++}
++
++// pdqsortLessFunc sorts data[a:b].
++// The algorithm based on pattern-defeating quicksort(pdqsort), but without the optimizations from BlockQuicksort.
++// pdqsort paper: https://arxiv.org/pdf/2106.05123.pdf
++// C++ implementation: https://github.com/orlp/pdqsort
++// Rust implementation: https://docs.rs/pdqsort/latest/pdqsort/
++// limit is the number of allowed bad (very unbalanced) pivots before falling back to heapsort.
++func pdqsortLessFunc[E any](data []E, a, b, limit int, less func(a, b E) bool) {
++	const maxInsertion = 12
++
++	var (
++		wasBalanced    = true // whether the last partitioning was reasonably balanced
++		wasPartitioned = true // whether the slice was already partitioned
++	)
++
++	for {
++		length := b - a
++
++		if length <= maxInsertion {
++			insertionSortLessFunc(data, a, b, less)
++			return
++		}
++
++		// Fall back to heapsort if too many bad choices were made.
++		if limit == 0 {
++			heapSortLessFunc(data, a, b, less)
++			return
++		}
++
++		// If the last partitioning was imbalanced, we need to breaking patterns.
++		if !wasBalanced {
++			breakPatternsLessFunc(data, a, b, less)
++			limit--
++		}
++
++		pivot, hint := choosePivotLessFunc(data, a, b, less)
++		if hint == decreasingHint {
++			reverseRangeLessFunc(data, a, b, less)
++			// The chosen pivot was pivot-a elements after the start of the array.
++			// After reversing it is pivot-a elements before the end of the array.
++			// The idea came from Rust's implementation.
++			pivot = (b - 1) - (pivot - a)
++			hint = increasingHint
++		}
++
++		// The slice is likely already sorted.
++		if wasBalanced && wasPartitioned && hint == increasingHint {
++			if partialInsertionSortLessFunc(data, a, b, less) {
++				return
++			}
++		}
++
++		// Probably the slice contains many duplicate elements, partition the slice into
++		// elements equal to and elements greater than the pivot.
++		if a > 0 && !less(data[a-1], data[pivot]) {
++			mid := partitionEqualLessFunc(data, a, b, pivot, less)
++			a = mid
++			continue
++		}
++
++		mid, alreadyPartitioned := partitionLessFunc(data, a, b, pivot, less)
++		wasPartitioned = alreadyPartitioned
++
++		leftLen, rightLen := mid-a, b-mid
++		balanceThreshold := length / 8
++		if leftLen < rightLen {
++			wasBalanced = leftLen >= balanceThreshold
++			pdqsortLessFunc(data, a, mid, limit, less)
++			a = mid + 1
++		} else {
++			wasBalanced = rightLen >= balanceThreshold
++			pdqsortLessFunc(data, mid+1, b, limit, less)
++			b = mid
++		}
++	}
++}
++
++// partitionLessFunc does one quicksort partition.
++// Let p = data[pivot]
++// Moves elements in data[a:b] around, so that data[i]<p and data[j]>=p for i<newpivot and j>newpivot.
++// On return, data[newpivot] = p
++func partitionLessFunc[E any](data []E, a, b, pivot int, less func(a, b E) bool) (newpivot int, alreadyPartitioned bool) {
++	data[a], data[pivot] = data[pivot], data[a]
++	i, j := a+1, b-1 // i and j are inclusive of the elements remaining to be partitioned
++
++	for i <= j && less(data[i], data[a]) {
++		i++
++	}
++	for i <= j && !less(data[j], data[a]) {
++		j--
++	}
++	if i > j {
++		data[j], data[a] = data[a], data[j]
++		return j, true
++	}
++	data[i], data[j] = data[j], data[i]
++	i++
++	j--
++
++	for {
++		for i <= j && less(data[i], data[a]) {
++			i++
++		}
++		for i <= j && !less(data[j], data[a]) {
++			j--
++		}
++		if i > j {
++			break
++		}
++		data[i], data[j] = data[j], data[i]
++		i++
++		j--
++	}
++	data[j], data[a] = data[a], data[j]
++	return j, false
++}
++
++// partitionEqualLessFunc partitions data[a:b] into elements equal to data[pivot] followed by elements greater than data[pivot].
++// It assumed that data[a:b] does not contain elements smaller than the data[pivot].
++func partitionEqualLessFunc[E any](data []E, a, b, pivot int, less func(a, b E) bool) (newpivot int) {
++	data[a], data[pivot] = data[pivot], data[a]
++	i, j := a+1, b-1 // i and j are inclusive of the elements remaining to be partitioned
++
++	for {
++		for i <= j && !less(data[a], data[i]) {
++			i++
++		}
++		for i <= j && less(data[a], data[j]) {
++			j--
++		}
++		if i > j {
++			break
++		}
++		data[i], data[j] = data[j], data[i]
++		i++
++		j--
++	}
++	return i
++}
++
++// partialInsertionSortLessFunc partially sorts a slice, returns true if the slice is sorted at the end.
++func partialInsertionSortLessFunc[E any](data []E, a, b int, less func(a, b E) bool) bool {
++	const (
++		maxSteps         = 5  // maximum number of adjacent out-of-order pairs that will get shifted
++		shortestShifting = 50 // don't shift any elements on short arrays
++	)
++	i := a + 1
++	for j := 0; j < maxSteps; j++ {
++		for i < b && !less(data[i], data[i-1]) {
++			i++
++		}
++
++		if i == b {
++			return true
++		}
++
++		if b-a < shortestShifting {
++			return false
++		}
++
++		data[i], data[i-1] = data[i-1], data[i]
++
++		// Shift the smaller one to the left.
++		if i-a >= 2 {
++			for j := i - 1; j >= 1; j-- {
++				if !less(data[j], data[j-1]) {
++					break
++				}
++				data[j], data[j-1] = data[j-1], data[j]
++			}
++		}
++		// Shift the greater one to the right.
++		if b-i >= 2 {
++			for j := i + 1; j < b; j++ {
++				if !less(data[j], data[j-1]) {
++					break
++				}
++				data[j], data[j-1] = data[j-1], data[j]
++			}
++		}
++	}
++	return false
++}
++
++// breakPatternsLessFunc scatters some elements around in an attempt to break some patterns
++// that might cause imbalanced partitions in quicksort.
++func breakPatternsLessFunc[E any](data []E, a, b int, less func(a, b E) bool) {
++	length := b - a
++	if length >= 8 {
++		random := xorshift(length)
++		modulus := nextPowerOfTwo(length)
++
++		for idx := a + (length/4)*2 - 1; idx <= a+(length/4)*2+1; idx++ {
++			other := int(uint(random.Next()) & (modulus - 1))
++			if other >= length {
++				other -= length
++			}
++			data[idx], data[a+other] = data[a+other], data[idx]
++		}
++	}
++}
++
++// choosePivotLessFunc chooses a pivot in data[a:b].
++//
++// [0,8): chooses a static pivot.
++// [8,shortestNinther): uses the simple median-of-three method.
++// [shortestNinther,∞): uses the Tukey ninther method.
++func choosePivotLessFunc[E any](data []E, a, b int, less func(a, b E) bool) (pivot int, hint sortedHint) {
++	const (
++		shortestNinther = 50
++		maxSwaps        = 4 * 3
++	)
++
++	l := b - a
++
++	var (
++		swaps int
++		i     = a + l/4*1
++		j     = a + l/4*2
++		k     = a + l/4*3
++	)
++
++	if l >= 8 {
++		if l >= shortestNinther {
++			// Tukey ninther method, the idea came from Rust's implementation.
++			i = medianAdjacentLessFunc(data, i, &swaps, less)
++			j = medianAdjacentLessFunc(data, j, &swaps, less)
++			k = medianAdjacentLessFunc(data, k, &swaps, less)
++		}
++		// Find the median among i, j, k and stores it into j.
++		j = medianLessFunc(data, i, j, k, &swaps, less)
++	}
++
++	switch swaps {
++	case 0:
++		return j, increasingHint
++	case maxSwaps:
++		return j, decreasingHint
++	default:
++		return j, unknownHint
++	}
++}
++
++// order2LessFunc returns x,y where data[x] <= data[y], where x,y=a,b or x,y=b,a.
++func order2LessFunc[E any](data []E, a, b int, swaps *int, less func(a, b E) bool) (int, int) {
++	if less(data[b], data[a]) {
++		*swaps++
++		return b, a
++	}
++	return a, b
++}
++
++// medianLessFunc returns x where data[x] is the median of data[a],data[b],data[c], where x is a, b, or c.
++func medianLessFunc[E any](data []E, a, b, c int, swaps *int, less func(a, b E) bool) int {
++	a, b = order2LessFunc(data, a, b, swaps, less)
++	b, c = order2LessFunc(data, b, c, swaps, less)
++	a, b = order2LessFunc(data, a, b, swaps, less)
++	return b
++}
++
++// medianAdjacentLessFunc finds the median of data[a - 1], data[a], data[a + 1] and stores the index into a.
++func medianAdjacentLessFunc[E any](data []E, a int, swaps *int, less func(a, b E) bool) int {
++	return medianLessFunc(data, a-1, a, a+1, swaps, less)
++}
++
++func reverseRangeLessFunc[E any](data []E, a, b int, less func(a, b E) bool) {
++	i := a
++	j := b - 1
++	for i < j {
++		data[i], data[j] = data[j], data[i]
++		i++
++		j--
++	}
++}
++
++func swapRangeLessFunc[E any](data []E, a, b, n int, less func(a, b E) bool) {
++	for i := 0; i < n; i++ {
++		data[a+i], data[b+i] = data[b+i], data[a+i]
++	}
++}
++
++func stableLessFunc[E any](data []E, n int, less func(a, b E) bool) {
++	blockSize := 20 // must be > 0
++	a, b := 0, blockSize
++	for b <= n {
++		insertionSortLessFunc(data, a, b, less)
++		a = b
++		b += blockSize
++	}
++	insertionSortLessFunc(data, a, n, less)
++
++	for blockSize < n {
++		a, b = 0, 2*blockSize
++		for b <= n {
++			symMergeLessFunc(data, a, a+blockSize, b, less)
++			a = b
++			b += 2 * blockSize
++		}
++		if m := a + blockSize; m < n {
++			symMergeLessFunc(data, a, m, n, less)
++		}
++		blockSize *= 2
++	}
++}
++
++// symMergeLessFunc merges the two sorted subsequences data[a:m] and data[m:b] using
++// the SymMerge algorithm from Pok-Son Kim and Arne Kutzner, "Stable Minimum
++// Storage Merging by Symmetric Comparisons", in Susanne Albers and Tomasz
++// Radzik, editors, Algorithms - ESA 2004, volume 3221 of Lecture Notes in
++// Computer Science, pages 714-723. Springer, 2004.
++//
++// Let M = m-a and N = b-n. Wolog M < N.
++// The recursion depth is bound by ceil(log(N+M)).
++// The algorithm needs O(M*log(N/M + 1)) calls to data.Less.
++// The algorithm needs O((M+N)*log(M)) calls to data.Swap.
++//
++// The paper gives O((M+N)*log(M)) as the number of assignments assuming a
++// rotation algorithm which uses O(M+N+gcd(M+N)) assignments. The argumentation
++// in the paper carries through for Swap operations, especially as the block
++// swapping rotate uses only O(M+N) Swaps.
++//
++// symMerge assumes non-degenerate arguments: a < m && m < b.
++// Having the caller check this condition eliminates many leaf recursion calls,
++// which improves performance.
++func symMergeLessFunc[E any](data []E, a, m, b int, less func(a, b E) bool) {
++	// Avoid unnecessary recursions of symMerge
++	// by direct insertion of data[a] into data[m:b]
++	// if data[a:m] only contains one element.
++	if m-a == 1 {
++		// Use binary search to find the lowest index i
++		// such that data[i] >= data[a] for m <= i < b.
++		// Exit the search loop with i == b in case no such index exists.
++		i := m
++		j := b
++		for i < j {
++			h := int(uint(i+j) >> 1)
++			if less(data[h], data[a]) {
++				i = h + 1
++			} else {
++				j = h
++			}
++		}
++		// Swap values until data[a] reaches the position before i.
++		for k := a; k < i-1; k++ {
++			data[k], data[k+1] = data[k+1], data[k]
++		}
++		return
++	}
++
++	// Avoid unnecessary recursions of symMerge
++	// by direct insertion of data[m] into data[a:m]
++	// if data[m:b] only contains one element.
++	if b-m == 1 {
++		// Use binary search to find the lowest index i
++		// such that data[i] > data[m] for a <= i < m.
++		// Exit the search loop with i == m in case no such index exists.
++		i := a
++		j := m
++		for i < j {
++			h := int(uint(i+j) >> 1)
++			if !less(data[m], data[h]) {
++				i = h + 1
++			} else {
++				j = h
++			}
++		}
++		// Swap values until data[m] reaches the position i.
++		for k := m; k > i; k-- {
++			data[k], data[k-1] = data[k-1], data[k]
++		}
++		return
++	}
++
++	mid := int(uint(a+b) >> 1)
++	n := mid + m
++	var start, r int
++	if m > mid {
++		start = n - b
++		r = mid
++	} else {
++		start = a
++		r = m
++	}
++	p := n - 1
++
++	for start < r {
++		c := int(uint(start+r) >> 1)
++		if !less(data[p-c], data[c]) {
++			start = c + 1
++		} else {
++			r = c
++		}
++	}
++
++	end := n - start
++	if start < m && m < end {
++		rotateLessFunc(data, start, m, end, less)
++	}
++	if a < start && start < mid {
++		symMergeLessFunc(data, a, start, mid, less)
++	}
++	if mid < end && end < b {
++		symMergeLessFunc(data, mid, end, b, less)
++	}
++}
++
++// rotateLessFunc rotates two consecutive blocks u = data[a:m] and v = data[m:b] in data:
++// Data of the form 'x u v y' is changed to 'x v u y'.
++// rotate performs at most b-a many calls to data.Swap,
++// and it assumes non-degenerate arguments: a < m && m < b.
++func rotateLessFunc[E any](data []E, a, m, b int, less func(a, b E) bool) {
++	i := m - a
++	j := b - m
++
++	for i != j {
++		if i > j {
++			swapRangeLessFunc(data, m-i, m, j, less)
++			i -= j
++		} else {
++			swapRangeLessFunc(data, m-i, m+j-i, i, less)
++			j -= i
++		}
++	}
++	// i == j
++	swapRangeLessFunc(data, m-i, m, i, less)
++}
+diff --git a/vendor/golang.org/x/exp/slices/zsortordered.go b/vendor/golang.org/x/exp/slices/zsortordered.go
+new file mode 100644
+index 000000000..efaa1c8b7
+--- /dev/null
++++ b/vendor/golang.org/x/exp/slices/zsortordered.go
+@@ -0,0 +1,481 @@
++// Code generated by gen_sort_variants.go; DO NOT EDIT.
++
++// Copyright 2022 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++package slices
++
++import "golang.org/x/exp/constraints"
++
++// insertionSortOrdered sorts data[a:b] using insertion sort.
++func insertionSortOrdered[E constraints.Ordered](data []E, a, b int) {
++	for i := a + 1; i < b; i++ {
++		for j := i; j > a && (data[j] < data[j-1]); j-- {
++			data[j], data[j-1] = data[j-1], data[j]
++		}
++	}
++}
++
++// siftDownOrdered implements the heap property on data[lo:hi].
++// first is an offset into the array where the root of the heap lies.
++func siftDownOrdered[E constraints.Ordered](data []E, lo, hi, first int) {
++	root := lo
++	for {
++		child := 2*root + 1
++		if child >= hi {
++			break
++		}
++		if child+1 < hi && (data[first+child] < data[first+child+1]) {
++			child++
++		}
++		if !(data[first+root] < data[first+child]) {
++			return
++		}
++		data[first+root], data[first+child] = data[first+child], data[first+root]
++		root = child
++	}
++}
++
++func heapSortOrdered[E constraints.Ordered](data []E, a, b int) {
++	first := a
++	lo := 0
++	hi := b - a
++
++	// Build heap with greatest element at top.
++	for i := (hi - 1) / 2; i >= 0; i-- {
++		siftDownOrdered(data, i, hi, first)
++	}
++
++	// Pop elements, largest first, into end of data.
++	for i := hi - 1; i >= 0; i-- {
++		data[first], data[first+i] = data[first+i], data[first]
++		siftDownOrdered(data, lo, i, first)
++	}
++}
++
++// pdqsortOrdered sorts data[a:b].
++// The algorithm based on pattern-defeating quicksort(pdqsort), but without the optimizations from BlockQuicksort.
++// pdqsort paper: https://arxiv.org/pdf/2106.05123.pdf
++// C++ implementation: https://github.com/orlp/pdqsort
++// Rust implementation: https://docs.rs/pdqsort/latest/pdqsort/
++// limit is the number of allowed bad (very unbalanced) pivots before falling back to heapsort.
++func pdqsortOrdered[E constraints.Ordered](data []E, a, b, limit int) {
++	const maxInsertion = 12
++
++	var (
++		wasBalanced    = true // whether the last partitioning was reasonably balanced
++		wasPartitioned = true // whether the slice was already partitioned
++	)
++
++	for {
++		length := b - a
++
++		if length <= maxInsertion {
++			insertionSortOrdered(data, a, b)
++			return
++		}
++
++		// Fall back to heapsort if too many bad choices were made.
++		if limit == 0 {
++			heapSortOrdered(data, a, b)
++			return
++		}
++
++		// If the last partitioning was imbalanced, we need to breaking patterns.
++		if !wasBalanced {
++			breakPatternsOrdered(data, a, b)
++			limit--
++		}
++
++		pivot, hint := choosePivotOrdered(data, a, b)
++		if hint == decreasingHint {
++			reverseRangeOrdered(data, a, b)
++			// The chosen pivot was pivot-a elements after the start of the array.
++			// After reversing it is pivot-a elements before the end of the array.
++			// The idea came from Rust's implementation.
++			pivot = (b - 1) - (pivot - a)
++			hint = increasingHint
++		}
++
++		// The slice is likely already sorted.
++		if wasBalanced && wasPartitioned && hint == increasingHint {
++			if partialInsertionSortOrdered(data, a, b) {
++				return
++			}
++		}
++
++		// Probably the slice contains many duplicate elements, partition the slice into
++		// elements equal to and elements greater than the pivot.
++		if a > 0 && !(data[a-1] < data[pivot]) {
++			mid := partitionEqualOrdered(data, a, b, pivot)
++			a = mid
++			continue
++		}
++
++		mid, alreadyPartitioned := partitionOrdered(data, a, b, pivot)
++		wasPartitioned = alreadyPartitioned
++
++		leftLen, rightLen := mid-a, b-mid
++		balanceThreshold := length / 8
++		if leftLen < rightLen {
++			wasBalanced = leftLen >= balanceThreshold
++			pdqsortOrdered(data, a, mid, limit)
++			a = mid + 1
++		} else {
++			wasBalanced = rightLen >= balanceThreshold
++			pdqsortOrdered(data, mid+1, b, limit)
++			b = mid
++		}
++	}
++}
++
++// partitionOrdered does one quicksort partition.
++// Let p = data[pivot]
++// Moves elements in data[a:b] around, so that data[i]<p and data[j]>=p for i<newpivot and j>newpivot.
++// On return, data[newpivot] = p
++func partitionOrdered[E constraints.Ordered](data []E, a, b, pivot int) (newpivot int, alreadyPartitioned bool) {
++	data[a], data[pivot] = data[pivot], data[a]
++	i, j := a+1, b-1 // i and j are inclusive of the elements remaining to be partitioned
++
++	for i <= j && (data[i] < data[a]) {
++		i++
++	}
++	for i <= j && !(data[j] < data[a]) {
++		j--
++	}
++	if i > j {
++		data[j], data[a] = data[a], data[j]
++		return j, true
++	}
++	data[i], data[j] = data[j], data[i]
++	i++
++	j--
++
++	for {
++		for i <= j && (data[i] < data[a]) {
++			i++
++		}
++		for i <= j && !(data[j] < data[a]) {
++			j--
++		}
++		if i > j {
++			break
++		}
++		data[i], data[j] = data[j], data[i]
++		i++
++		j--
++	}
++	data[j], data[a] = data[a], data[j]
++	return j, false
++}
++
++// partitionEqualOrdered partitions data[a:b] into elements equal to data[pivot] followed by elements greater than data[pivot].
++// It assumed that data[a:b] does not contain elements smaller than the data[pivot].
++func partitionEqualOrdered[E constraints.Ordered](data []E, a, b, pivot int) (newpivot int) {
++	data[a], data[pivot] = data[pivot], data[a]
++	i, j := a+1, b-1 // i and j are inclusive of the elements remaining to be partitioned
++
++	for {
++		for i <= j && !(data[a] < data[i]) {
++			i++
++		}
++		for i <= j && (data[a] < data[j]) {
++			j--
++		}
++		if i > j {
++			break
++		}
++		data[i], data[j] = data[j], data[i]
++		i++
++		j--
++	}
++	return i
++}
++
++// partialInsertionSortOrdered partially sorts a slice, returns true if the slice is sorted at the end.
++func partialInsertionSortOrdered[E constraints.Ordered](data []E, a, b int) bool {
++	const (
++		maxSteps         = 5  // maximum number of adjacent out-of-order pairs that will get shifted
++		shortestShifting = 50 // don't shift any elements on short arrays
++	)
++	i := a + 1
++	for j := 0; j < maxSteps; j++ {
++		for i < b && !(data[i] < data[i-1]) {
++			i++
++		}
++
++		if i == b {
++			return true
++		}
++
++		if b-a < shortestShifting {
++			return false
++		}
++
++		data[i], data[i-1] = data[i-1], data[i]
++
++		// Shift the smaller one to the left.
++		if i-a >= 2 {
++			for j := i - 1; j >= 1; j-- {
++				if !(data[j] < data[j-1]) {
++					break
++				}
++				data[j], data[j-1] = data[j-1], data[j]
++			}
++		}
++		// Shift the greater one to the right.
++		if b-i >= 2 {
++			for j := i + 1; j < b; j++ {
++				if !(data[j] < data[j-1]) {
++					break
++				}
++				data[j], data[j-1] = data[j-1], data[j]
++			}
++		}
++	}
++	return false
++}
++
++// breakPatternsOrdered scatters some elements around in an attempt to break some patterns
++// that might cause imbalanced partitions in quicksort.
++func breakPatternsOrdered[E constraints.Ordered](data []E, a, b int) {
++	length := b - a
++	if length >= 8 {
++		random := xorshift(length)
++		modulus := nextPowerOfTwo(length)
++
++		for idx := a + (length/4)*2 - 1; idx <= a+(length/4)*2+1; idx++ {
++			other := int(uint(random.Next()) & (modulus - 1))
++			if other >= length {
++				other -= length
++			}
++			data[idx], data[a+other] = data[a+other], data[idx]
++		}
++	}
++}
++
++// choosePivotOrdered chooses a pivot in data[a:b].
++//
++// [0,8): chooses a static pivot.
++// [8,shortestNinther): uses the simple median-of-three method.
++// [shortestNinther,∞): uses the Tukey ninther method.
++func choosePivotOrdered[E constraints.Ordered](data []E, a, b int) (pivot int, hint sortedHint) {
++	const (
++		shortestNinther = 50
++		maxSwaps        = 4 * 3
++	)
++
++	l := b - a
++
++	var (
++		swaps int
++		i     = a + l/4*1
++		j     = a + l/4*2
++		k     = a + l/4*3
++	)
++
++	if l >= 8 {
++		if l >= shortestNinther {
++			// Tukey ninther method, the idea came from Rust's implementation.
++			i = medianAdjacentOrdered(data, i, &swaps)
++			j = medianAdjacentOrdered(data, j, &swaps)
++			k = medianAdjacentOrdered(data, k, &swaps)
++		}
++		// Find the median among i, j, k and stores it into j.
++		j = medianOrdered(data, i, j, k, &swaps)
++	}
++
++	switch swaps {
++	case 0:
++		return j, increasingHint
++	case maxSwaps:
++		return j, decreasingHint
++	default:
++		return j, unknownHint
++	}
++}
++
++// order2Ordered returns x,y where data[x] <= data[y], where x,y=a,b or x,y=b,a.
++func order2Ordered[E constraints.Ordered](data []E, a, b int, swaps *int) (int, int) {
++	if data[b] < data[a] {
++		*swaps++
++		return b, a
++	}
++	return a, b
++}
++
++// medianOrdered returns x where data[x] is the median of data[a],data[b],data[c], where x is a, b, or c.
++func medianOrdered[E constraints.Ordered](data []E, a, b, c int, swaps *int) int {
++	a, b = order2Ordered(data, a, b, swaps)
++	b, c = order2Ordered(data, b, c, swaps)
++	a, b = order2Ordered(data, a, b, swaps)
++	return b
++}
++
++// medianAdjacentOrdered finds the median of data[a - 1], data[a], data[a + 1] and stores the index into a.
++func medianAdjacentOrdered[E constraints.Ordered](data []E, a int, swaps *int) int {
++	return medianOrdered(data, a-1, a, a+1, swaps)
++}
++
++func reverseRangeOrdered[E constraints.Ordered](data []E, a, b int) {
++	i := a
++	j := b - 1
++	for i < j {
++		data[i], data[j] = data[j], data[i]
++		i++
++		j--
++	}
++}
++
++func swapRangeOrdered[E constraints.Ordered](data []E, a, b, n int) {
++	for i := 0; i < n; i++ {
++		data[a+i], data[b+i] = data[b+i], data[a+i]
++	}
++}
++
++func stableOrdered[E constraints.Ordered](data []E, n int) {
++	blockSize := 20 // must be > 0
++	a, b := 0, blockSize
++	for b <= n {
++		insertionSortOrdered(data, a, b)
++		a = b
++		b += blockSize
++	}
++	insertionSortOrdered(data, a, n)
++
++	for blockSize < n {
++		a, b = 0, 2*blockSize
++		for b <= n {
++			symMergeOrdered(data, a, a+blockSize, b)
++			a = b
++			b += 2 * blockSize
++		}
++		if m := a + blockSize; m < n {
++			symMergeOrdered(data, a, m, n)
++		}
++		blockSize *= 2
++	}
++}
++
++// symMergeOrdered merges the two sorted subsequences data[a:m] and data[m:b] using
++// the SymMerge algorithm from Pok-Son Kim and Arne Kutzner, "Stable Minimum
++// Storage Merging by Symmetric Comparisons", in Susanne Albers and Tomasz
++// Radzik, editors, Algorithms - ESA 2004, volume 3221 of Lecture Notes in
++// Computer Science, pages 714-723. Springer, 2004.
++//
++// Let M = m-a and N = b-n. Wolog M < N.
++// The recursion depth is bound by ceil(log(N+M)).
++// The algorithm needs O(M*log(N/M + 1)) calls to data.Less.
++// The algorithm needs O((M+N)*log(M)) calls to data.Swap.
++//
++// The paper gives O((M+N)*log(M)) as the number of assignments assuming a
++// rotation algorithm which uses O(M+N+gcd(M+N)) assignments. The argumentation
++// in the paper carries through for Swap operations, especially as the block
++// swapping rotate uses only O(M+N) Swaps.
++//
++// symMerge assumes non-degenerate arguments: a < m && m < b.
++// Having the caller check this condition eliminates many leaf recursion calls,
++// which improves performance.
++func symMergeOrdered[E constraints.Ordered](data []E, a, m, b int) {
++	// Avoid unnecessary recursions of symMerge
++	// by direct insertion of data[a] into data[m:b]
++	// if data[a:m] only contains one element.
++	if m-a == 1 {
++		// Use binary search to find the lowest index i
++		// such that data[i] >= data[a] for m <= i < b.
++		// Exit the search loop with i == b in case no such index exists.
++		i := m
++		j := b
++		for i < j {
++			h := int(uint(i+j) >> 1)
++			if data[h] < data[a] {
++				i = h + 1
++			} else {
++				j = h
++			}
++		}
++		// Swap values until data[a] reaches the position before i.
++		for k := a; k < i-1; k++ {
++			data[k], data[k+1] = data[k+1], data[k]
++		}
++		return
++	}
++
++	// Avoid unnecessary recursions of symMerge
++	// by direct insertion of data[m] into data[a:m]
++	// if data[m:b] only contains one element.
++	if b-m == 1 {
++		// Use binary search to find the lowest index i
++		// such that data[i] > data[m] for a <= i < m.
++		// Exit the search loop with i == m in case no such index exists.
++		i := a
++		j := m
++		for i < j {
++			h := int(uint(i+j) >> 1)
++			if !(data[m] < data[h]) {
++				i = h + 1
++			} else {
++				j = h
++			}
++		}
++		// Swap values until data[m] reaches the position i.
++		for k := m; k > i; k-- {
++			data[k], data[k-1] = data[k-1], data[k]
++		}
++		return
++	}
++
++	mid := int(uint(a+b) >> 1)
++	n := mid + m
++	var start, r int
++	if m > mid {
++		start = n - b
++		r = mid
++	} else {
++		start = a
++		r = m
++	}
++	p := n - 1
++
++	for start < r {
++		c := int(uint(start+r) >> 1)
++		if !(data[p-c] < data[c]) {
++			start = c + 1
++		} else {
++			r = c
++		}
++	}
++
++	end := n - start
++	if start < m && m < end {
++		rotateOrdered(data, start, m, end)
++	}
++	if a < start && start < mid {
++		symMergeOrdered(data, a, start, mid)
++	}
++	if mid < end && end < b {
++		symMergeOrdered(data, mid, end, b)
++	}
++}
++
++// rotateOrdered rotates two consecutive blocks u = data[a:m] and v = data[m:b] in data:
++// Data of the form 'x u v y' is changed to 'x v u y'.
++// rotate performs at most b-a many calls to data.Swap,
++// and it assumes non-degenerate arguments: a < m && m < b.
++func rotateOrdered[E constraints.Ordered](data []E, a, m, b int) {
++	i := m - a
++	j := b - m
++
++	for i != j {
++		if i > j {
++			swapRangeOrdered(data, m-i, m, j)
++			i -= j
++		} else {
++			swapRangeOrdered(data, m-i, m+j-i, i)
++			j -= i
++		}
++	}
++	// i == j
++	swapRangeOrdered(data, m-i, m, i)
++}
+diff --git a/vendor/golang.org/x/mod/module/module.go b/vendor/golang.org/x/mod/module/module.go
+index c26d1d29e..e9dec6e61 100644
+--- a/vendor/golang.org/x/mod/module/module.go
++++ b/vendor/golang.org/x/mod/module/module.go
+@@ -96,13 +96,13 @@ package module
+ // Changes to the semantics in this file require approval from rsc.
+ 
+ import (
++	"errors"
+ 	"fmt"
+ 	"path"
+ 	"sort"
+ 	"strings"
+ 	"unicode"
+ 	"unicode/utf8"
+-	"errors"
+ 
+ 	"golang.org/x/mod/semver"
+ )
+@@ -258,7 +258,7 @@ func modPathOK(r rune) bool {
+ 	return false
+ }
+ 
+-// modPathOK reports whether r can appear in a package import path element.
++// importPathOK reports whether r can appear in a package import path element.
+ //
+ // Import paths are intermediate between module paths and file paths: we allow
+ // disallow characters that would be confusing or ambiguous as arguments to
+diff --git a/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_darwin.go b/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_darwin.go
+new file mode 100644
+index 000000000..0ca55e0d5
+--- /dev/null
++++ b/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_darwin.go
+@@ -0,0 +1,119 @@
++// Copyright 2022 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build darwin && cgo
++// +build darwin,cgo
++
++package fastwalk
++
++/*
++#include <dirent.h>
++
++// fastwalk_readdir_r wraps readdir_r so that we don't have to pass a dirent**
++// result pointer which triggers CGO's "Go pointer to Go pointer" check unless
++// we allocat the result dirent* with malloc.
++//
++// fastwalk_readdir_r returns 0 on success, -1 upon reaching the end of the
++// directory, or a positive error number to indicate failure.
++static int fastwalk_readdir_r(DIR *fd, struct dirent *entry) {
++	struct dirent *result;
++	int ret = readdir_r(fd, entry, &result);
++	if (ret == 0 && result == NULL) {
++		ret = -1; // EOF
++	}
++	return ret;
++}
++*/
++import "C"
++
++import (
++	"os"
++	"syscall"
++	"unsafe"
++)
++
++func readDir(dirName string, fn func(dirName, entName string, typ os.FileMode) error) error {
++	fd, err := openDir(dirName)
++	if err != nil {
++		return &os.PathError{Op: "opendir", Path: dirName, Err: err}
++	}
++	defer C.closedir(fd)
++
++	skipFiles := false
++	var dirent syscall.Dirent
++	for {
++		ret := int(C.fastwalk_readdir_r(fd, (*C.struct_dirent)(unsafe.Pointer(&dirent))))
++		if ret != 0 {
++			if ret == -1 {
++				break // EOF
++			}
++			if ret == int(syscall.EINTR) {
++				continue
++			}
++			return &os.PathError{Op: "readdir", Path: dirName, Err: syscall.Errno(ret)}
++		}
++		if dirent.Ino == 0 {
++			continue
++		}
++		typ := dtToType(dirent.Type)
++		if skipFiles && typ.IsRegular() {
++			continue
++		}
++		name := (*[len(syscall.Dirent{}.Name)]byte)(unsafe.Pointer(&dirent.Name))[:]
++		name = name[:dirent.Namlen]
++		for i, c := range name {
++			if c == 0 {
++				name = name[:i]
++				break
++			}
++		}
++		// Check for useless names before allocating a string.
++		if string(name) == "." || string(name) == ".." {
++			continue
++		}
++		if err := fn(dirName, string(name), typ); err != nil {
++			if err != ErrSkipFiles {
++				return err
++			}
++			skipFiles = true
++		}
++	}
++
++	return nil
++}
++
++func dtToType(typ uint8) os.FileMode {
++	switch typ {
++	case syscall.DT_BLK:
++		return os.ModeDevice
++	case syscall.DT_CHR:
++		return os.ModeDevice | os.ModeCharDevice
++	case syscall.DT_DIR:
++		return os.ModeDir
++	case syscall.DT_FIFO:
++		return os.ModeNamedPipe
++	case syscall.DT_LNK:
++		return os.ModeSymlink
++	case syscall.DT_REG:
++		return 0
++	case syscall.DT_SOCK:
++		return os.ModeSocket
++	}
++	return ^os.FileMode(0)
++}
++
++// openDir wraps opendir(3) and handles any EINTR errors. The returned *DIR
++// needs to be closed with closedir(3).
++func openDir(path string) (*C.DIR, error) {
++	name, err := syscall.BytePtrFromString(path)
++	if err != nil {
++		return nil, err
++	}
++	for {
++		fd, err := C.opendir((*C.char)(unsafe.Pointer(name)))
++		if err != syscall.EINTR {
++			return fd, err
++		}
++	}
++}
+diff --git a/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_dirent_ino.go b/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_dirent_ino.go
+index ea02b9ebf..d3922890b 100644
+--- a/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_dirent_ino.go
++++ b/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_dirent_ino.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build (linux || darwin) && !appengine
+-// +build linux darwin
++//go:build (linux || (darwin && !cgo)) && !appengine
++// +build linux darwin,!cgo
+ // +build !appengine
+ 
+ package fastwalk
+@@ -11,5 +11,5 @@ package fastwalk
+ import "syscall"
+ 
+ func direntInode(dirent *syscall.Dirent) uint64 {
+-	return uint64(dirent.Ino)
++	return dirent.Ino
+ }
+diff --git a/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_dirent_namlen_bsd.go b/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_dirent_namlen_bsd.go
+index d5c9c321e..38a4db6af 100644
+--- a/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_dirent_namlen_bsd.go
++++ b/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_dirent_namlen_bsd.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build darwin || freebsd || openbsd || netbsd
+-// +build darwin freebsd openbsd netbsd
++//go:build (darwin && !cgo) || freebsd || openbsd || netbsd
++// +build darwin,!cgo freebsd openbsd netbsd
+ 
+ package fastwalk
+ 
+diff --git a/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_unix.go b/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_unix.go
+index 58bd87841..f12f1a734 100644
+--- a/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_unix.go
++++ b/vendor/golang.org/x/tools/internal/fastwalk/fastwalk_unix.go
+@@ -2,8 +2,8 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build (linux || darwin || freebsd || openbsd || netbsd) && !appengine
+-// +build linux darwin freebsd openbsd netbsd
++//go:build (linux || freebsd || openbsd || netbsd || (darwin && !cgo)) && !appengine
++// +build linux freebsd openbsd netbsd darwin,!cgo
+ // +build !appengine
+ 
+ package fastwalk
+diff --git a/vendor/golang.org/x/tools/internal/gocommand/invoke.go b/vendor/golang.org/x/tools/internal/gocommand/invoke.go
+index 67256dc39..d50551693 100644
+--- a/vendor/golang.org/x/tools/internal/gocommand/invoke.go
++++ b/vendor/golang.org/x/tools/internal/gocommand/invoke.go
+@@ -10,8 +10,10 @@ import (
+ 	"context"
+ 	"fmt"
+ 	"io"
++	"log"
+ 	"os"
+ 	"regexp"
++	"runtime"
+ 	"strconv"
+ 	"strings"
+ 	"sync"
+@@ -232,6 +234,12 @@ func (i *Invocation) run(ctx context.Context, stdout, stderr io.Writer) error {
+ 	return runCmdContext(ctx, cmd)
+ }
+ 
++// DebugHangingGoCommands may be set by tests to enable additional
++// instrumentation (including panics) for debugging hanging Go commands.
++//
++// See golang/go#54461 for details.
++var DebugHangingGoCommands = false
++
+ // runCmdContext is like exec.CommandContext except it sends os.Interrupt
+ // before os.Kill.
+ func runCmdContext(ctx context.Context, cmd *exec.Cmd) error {
+@@ -243,11 +251,24 @@ func runCmdContext(ctx context.Context, cmd *exec.Cmd) error {
+ 		resChan <- cmd.Wait()
+ 	}()
+ 
+-	select {
+-	case err := <-resChan:
+-		return err
+-	case <-ctx.Done():
++	// If we're interested in debugging hanging Go commands, stop waiting after a
++	// minute and panic with interesting information.
++	if DebugHangingGoCommands {
++		select {
++		case err := <-resChan:
++			return err
++		case <-time.After(1 * time.Minute):
++			HandleHangingGoCommand(cmd.Process)
++		case <-ctx.Done():
++		}
++	} else {
++		select {
++		case err := <-resChan:
++			return err
++		case <-ctx.Done():
++		}
+ 	}
++
+ 	// Cancelled. Interrupt and see if it ends voluntarily.
+ 	cmd.Process.Signal(os.Interrupt)
+ 	select {
+@@ -255,11 +276,63 @@ func runCmdContext(ctx context.Context, cmd *exec.Cmd) error {
+ 		return err
+ 	case <-time.After(time.Second):
+ 	}
++
+ 	// Didn't shut down in response to interrupt. Kill it hard.
+-	cmd.Process.Kill()
++	// TODO(rfindley): per advice from bcmills@, it may be better to send SIGQUIT
++	// on certain platforms, such as unix.
++	if err := cmd.Process.Kill(); err != nil && DebugHangingGoCommands {
++		// Don't panic here as this reliably fails on windows with EINVAL.
++		log.Printf("error killing the Go command: %v", err)
++	}
++
++	// See above: don't wait indefinitely if we're debugging hanging Go commands.
++	if DebugHangingGoCommands {
++		select {
++		case err := <-resChan:
++			return err
++		case <-time.After(10 * time.Second): // a shorter wait as resChan should return quickly following Kill
++			HandleHangingGoCommand(cmd.Process)
++		}
++	}
+ 	return <-resChan
+ }
+ 
++func HandleHangingGoCommand(proc *os.Process) {
++	switch runtime.GOOS {
++	case "linux", "darwin", "freebsd", "netbsd":
++		fmt.Fprintln(os.Stderr, `DETECTED A HANGING GO COMMAND
++
++The gopls test runner has detected a hanging go command. In order to debug
++this, the output of ps and lsof/fstat is printed below.
++
++See golang/go#54461 for more details.`)
++
++		fmt.Fprintln(os.Stderr, "\nps axo ppid,pid,command:")
++		fmt.Fprintln(os.Stderr, "-------------------------")
++		psCmd := exec.Command("ps", "axo", "ppid,pid,command")
++		psCmd.Stdout = os.Stderr
++		psCmd.Stderr = os.Stderr
++		if err := psCmd.Run(); err != nil {
++			panic(fmt.Sprintf("running ps: %v", err))
++		}
++
++		listFiles := "lsof"
++		if runtime.GOOS == "freebsd" || runtime.GOOS == "netbsd" {
++			listFiles = "fstat"
++		}
++
++		fmt.Fprintln(os.Stderr, "\n"+listFiles+":")
++		fmt.Fprintln(os.Stderr, "-----")
++		listFilesCmd := exec.Command(listFiles)
++		listFilesCmd.Stdout = os.Stderr
++		listFilesCmd.Stderr = os.Stderr
++		if err := listFilesCmd.Run(); err != nil {
++			panic(fmt.Sprintf("running %s: %v", listFiles, err))
++		}
++	}
++	panic(fmt.Sprintf("detected hanging go command (pid %d): see golang/go#54461 for more details", proc.Pid))
++}
++
+ func cmdDebugStr(cmd *exec.Cmd) string {
+ 	env := make(map[string]string)
+ 	for _, kv := range cmd.Env {
+diff --git a/vendor/golang.org/x/tools/internal/gocommand/version.go b/vendor/golang.org/x/tools/internal/gocommand/version.go
+index 713043680..8db5ceb9d 100644
+--- a/vendor/golang.org/x/tools/internal/gocommand/version.go
++++ b/vendor/golang.org/x/tools/internal/gocommand/version.go
+@@ -10,8 +10,15 @@ import (
+ 	"strings"
+ )
+ 
+-// GoVersion checks the go version by running "go list" with modules off.
+-// It returns the X in Go 1.X.
++// GoVersion reports the minor version number of the highest release
++// tag built into the go command on the PATH.
++//
++// Note that this may be higher than the version of the go tool used
++// to build this application, and thus the versions of the standard
++// go/{scanner,parser,ast,types} packages that are linked into it.
++// In that case, callers should either downgrade to the version of
++// go used to build the application, or report an error that the
++// application is too old to use the go command on the PATH.
+ func GoVersion(ctx context.Context, inv Invocation, r *Runner) (int, error) {
+ 	inv.Verb = "list"
+ 	inv.Args = []string{"-e", "-f", `{{context.ReleaseTags}}`, `--`, `unsafe`}
+@@ -38,7 +45,7 @@ func GoVersion(ctx context.Context, inv Invocation, r *Runner) (int, error) {
+ 	if len(stdout) < 3 {
+ 		return 0, fmt.Errorf("bad ReleaseTags output: %q", stdout)
+ 	}
+-	// Split up "[go1.1 go1.15]"
++	// Split up "[go1.1 go1.15]" and return highest go1.X value.
+ 	tags := strings.Fields(stdout[1 : len(stdout)-2])
+ 	for i := len(tags) - 1; i >= 0; i-- {
+ 		var version int
+diff --git a/vendor/golang.org/x/tools/internal/imports/fix.go b/vendor/golang.org/x/tools/internal/imports/fix.go
+index 9e373d64e..9b7b106fd 100644
+--- a/vendor/golang.org/x/tools/internal/imports/fix.go
++++ b/vendor/golang.org/x/tools/internal/imports/fix.go
+@@ -807,6 +807,11 @@ type ProcessEnv struct {
+ 	ModFlag    string
+ 	ModFile    string
+ 
++	// SkipPathInScan returns true if the path should be skipped from scans of
++	// the RootCurrentModule root type. The function argument is a clean,
++	// absolute path.
++	SkipPathInScan func(string) bool
++
+ 	// Env overrides the OS environment, and can be used to specify
+ 	// GOPROXY, GO111MODULE, etc. PATH cannot be set here, because
+ 	// exec.Command will not honor it.
+@@ -1367,9 +1372,9 @@ func (r *gopathResolver) scan(ctx context.Context, callback *scanCallback) error
+ 		return err
+ 	}
+ 	var roots []gopathwalk.Root
+-	roots = append(roots, gopathwalk.Root{filepath.Join(goenv["GOROOT"], "src"), gopathwalk.RootGOROOT})
++	roots = append(roots, gopathwalk.Root{Path: filepath.Join(goenv["GOROOT"], "src"), Type: gopathwalk.RootGOROOT})
+ 	for _, p := range filepath.SplitList(goenv["GOPATH"]) {
+-		roots = append(roots, gopathwalk.Root{filepath.Join(p, "src"), gopathwalk.RootGOPATH})
++		roots = append(roots, gopathwalk.Root{Path: filepath.Join(p, "src"), Type: gopathwalk.RootGOPATH})
+ 	}
+ 	// The callback is not necessarily safe to use in the goroutine below. Process roots eagerly.
+ 	roots = filterRoots(roots, callback.rootFound)
+diff --git a/vendor/golang.org/x/tools/internal/imports/mod.go b/vendor/golang.org/x/tools/internal/imports/mod.go
+index 46693f243..7d99d04ca 100644
+--- a/vendor/golang.org/x/tools/internal/imports/mod.go
++++ b/vendor/golang.org/x/tools/internal/imports/mod.go
+@@ -129,22 +129,22 @@ func (r *ModuleResolver) init() error {
+ 	})
+ 
+ 	r.roots = []gopathwalk.Root{
+-		{filepath.Join(goenv["GOROOT"], "/src"), gopathwalk.RootGOROOT},
++		{Path: filepath.Join(goenv["GOROOT"], "/src"), Type: gopathwalk.RootGOROOT},
+ 	}
+ 	r.mainByDir = make(map[string]*gocommand.ModuleJSON)
+ 	for _, main := range r.mains {
+-		r.roots = append(r.roots, gopathwalk.Root{main.Dir, gopathwalk.RootCurrentModule})
++		r.roots = append(r.roots, gopathwalk.Root{Path: main.Dir, Type: gopathwalk.RootCurrentModule})
+ 		r.mainByDir[main.Dir] = main
+ 	}
+ 	if vendorEnabled {
+-		r.roots = append(r.roots, gopathwalk.Root{r.dummyVendorMod.Dir, gopathwalk.RootOther})
++		r.roots = append(r.roots, gopathwalk.Root{Path: r.dummyVendorMod.Dir, Type: gopathwalk.RootOther})
+ 	} else {
+ 		addDep := func(mod *gocommand.ModuleJSON) {
+ 			if mod.Replace == nil {
+ 				// This is redundant with the cache, but we'll skip it cheaply enough.
+-				r.roots = append(r.roots, gopathwalk.Root{mod.Dir, gopathwalk.RootModuleCache})
++				r.roots = append(r.roots, gopathwalk.Root{Path: mod.Dir, Type: gopathwalk.RootModuleCache})
+ 			} else {
+-				r.roots = append(r.roots, gopathwalk.Root{mod.Dir, gopathwalk.RootOther})
++				r.roots = append(r.roots, gopathwalk.Root{Path: mod.Dir, Type: gopathwalk.RootOther})
+ 			}
+ 		}
+ 		// Walk dependent modules before scanning the full mod cache, direct deps first.
+@@ -158,7 +158,7 @@ func (r *ModuleResolver) init() error {
+ 				addDep(mod)
+ 			}
+ 		}
+-		r.roots = append(r.roots, gopathwalk.Root{r.moduleCacheDir, gopathwalk.RootModuleCache})
++		r.roots = append(r.roots, gopathwalk.Root{Path: r.moduleCacheDir, Type: gopathwalk.RootModuleCache})
+ 	}
+ 
+ 	r.scannedRoots = map[gopathwalk.Root]bool{}
+@@ -466,6 +466,16 @@ func (r *ModuleResolver) scan(ctx context.Context, callback *scanCallback) error
+ 	// We assume cached directories are fully cached, including all their
+ 	// children, and have not changed. We can skip them.
+ 	skip := func(root gopathwalk.Root, dir string) bool {
++		if r.env.SkipPathInScan != nil && root.Type == gopathwalk.RootCurrentModule {
++			if root.Path == dir {
++				return false
++			}
++
++			if r.env.SkipPathInScan(filepath.Clean(dir)) {
++				return true
++			}
++		}
++
+ 		info, ok := r.cacheLoad(dir)
+ 		if !ok {
+ 			return false
+diff --git a/vendor/golang.org/x/tools/internal/imports/zstdlib.go b/vendor/golang.org/x/tools/internal/imports/zstdlib.go
+index 437fbb78d..5db9b2d4c 100644
+--- a/vendor/golang.org/x/tools/internal/imports/zstdlib.go
++++ b/vendor/golang.org/x/tools/internal/imports/zstdlib.go
+@@ -1,9 +1,13 @@
++// Copyright 2022 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
+ // Code generated by mkstdlib.go. DO NOT EDIT.
+ 
+ package imports
+ 
+ var stdlib = map[string][]string{
+-	"archive/tar": []string{
++	"archive/tar": {
+ 		"ErrFieldTooLong",
+ 		"ErrHeader",
+ 		"ErrWriteAfterClose",
+@@ -34,7 +38,7 @@ var stdlib = map[string][]string{
+ 		"TypeXHeader",
+ 		"Writer",
+ 	},
+-	"archive/zip": []string{
++	"archive/zip": {
+ 		"Compressor",
+ 		"Decompressor",
+ 		"Deflate",
+@@ -54,7 +58,7 @@ var stdlib = map[string][]string{
+ 		"Store",
+ 		"Writer",
+ 	},
+-	"bufio": []string{
++	"bufio": {
+ 		"ErrAdvanceTooFar",
+ 		"ErrBadReadCount",
+ 		"ErrBufferFull",
+@@ -81,7 +85,7 @@ var stdlib = map[string][]string{
+ 		"SplitFunc",
+ 		"Writer",
+ 	},
+-	"bytes": []string{
++	"bytes": {
+ 		"Buffer",
+ 		"Compare",
+ 		"Contains",
+@@ -138,11 +142,11 @@ var stdlib = map[string][]string{
+ 		"TrimSpace",
+ 		"TrimSuffix",
+ 	},
+-	"compress/bzip2": []string{
++	"compress/bzip2": {
+ 		"NewReader",
+ 		"StructuralError",
+ 	},
+-	"compress/flate": []string{
++	"compress/flate": {
+ 		"BestCompression",
+ 		"BestSpeed",
+ 		"CorruptInputError",
+@@ -160,7 +164,7 @@ var stdlib = map[string][]string{
+ 		"WriteError",
+ 		"Writer",
+ 	},
+-	"compress/gzip": []string{
++	"compress/gzip": {
+ 		"BestCompression",
+ 		"BestSpeed",
+ 		"DefaultCompression",
+@@ -175,7 +179,7 @@ var stdlib = map[string][]string{
+ 		"Reader",
+ 		"Writer",
+ 	},
+-	"compress/lzw": []string{
++	"compress/lzw": {
+ 		"LSB",
+ 		"MSB",
+ 		"NewReader",
+@@ -184,7 +188,7 @@ var stdlib = map[string][]string{
+ 		"Reader",
+ 		"Writer",
+ 	},
+-	"compress/zlib": []string{
++	"compress/zlib": {
+ 		"BestCompression",
+ 		"BestSpeed",
+ 		"DefaultCompression",
+@@ -201,7 +205,7 @@ var stdlib = map[string][]string{
+ 		"Resetter",
+ 		"Writer",
+ 	},
+-	"container/heap": []string{
++	"container/heap": {
+ 		"Fix",
+ 		"Init",
+ 		"Interface",
+@@ -209,16 +213,16 @@ var stdlib = map[string][]string{
+ 		"Push",
+ 		"Remove",
+ 	},
+-	"container/list": []string{
++	"container/list": {
+ 		"Element",
+ 		"List",
+ 		"New",
+ 	},
+-	"container/ring": []string{
++	"container/ring": {
+ 		"New",
+ 		"Ring",
+ 	},
+-	"context": []string{
++	"context": {
+ 		"Background",
+ 		"CancelFunc",
+ 		"Canceled",
+@@ -230,7 +234,7 @@ var stdlib = map[string][]string{
+ 		"WithTimeout",
+ 		"WithValue",
+ 	},
+-	"crypto": []string{
++	"crypto": {
+ 		"BLAKE2b_256",
+ 		"BLAKE2b_384",
+ 		"BLAKE2b_512",
+@@ -259,12 +263,12 @@ var stdlib = map[string][]string{
+ 		"Signer",
+ 		"SignerOpts",
+ 	},
+-	"crypto/aes": []string{
++	"crypto/aes": {
+ 		"BlockSize",
+ 		"KeySizeError",
+ 		"NewCipher",
+ 	},
+-	"crypto/cipher": []string{
++	"crypto/cipher": {
+ 		"AEAD",
+ 		"Block",
+ 		"BlockMode",
+@@ -281,13 +285,13 @@ var stdlib = map[string][]string{
+ 		"StreamReader",
+ 		"StreamWriter",
+ 	},
+-	"crypto/des": []string{
++	"crypto/des": {
+ 		"BlockSize",
+ 		"KeySizeError",
+ 		"NewCipher",
+ 		"NewTripleDESCipher",
+ 	},
+-	"crypto/dsa": []string{
++	"crypto/dsa": {
+ 		"ErrInvalidPublicKey",
+ 		"GenerateKey",
+ 		"GenerateParameters",
+@@ -302,7 +306,7 @@ var stdlib = map[string][]string{
+ 		"Sign",
+ 		"Verify",
+ 	},
+-	"crypto/ecdsa": []string{
++	"crypto/ecdsa": {
+ 		"GenerateKey",
+ 		"PrivateKey",
+ 		"PublicKey",
+@@ -311,7 +315,7 @@ var stdlib = map[string][]string{
+ 		"Verify",
+ 		"VerifyASN1",
+ 	},
+-	"crypto/ed25519": []string{
++	"crypto/ed25519": {
+ 		"GenerateKey",
+ 		"NewKeyFromSeed",
+ 		"PrivateKey",
+@@ -323,7 +327,7 @@ var stdlib = map[string][]string{
+ 		"SignatureSize",
+ 		"Verify",
+ 	},
+-	"crypto/elliptic": []string{
++	"crypto/elliptic": {
+ 		"Curve",
+ 		"CurveParams",
+ 		"GenerateKey",
+@@ -336,28 +340,28 @@ var stdlib = map[string][]string{
+ 		"Unmarshal",
+ 		"UnmarshalCompressed",
+ 	},
+-	"crypto/hmac": []string{
++	"crypto/hmac": {
+ 		"Equal",
+ 		"New",
+ 	},
+-	"crypto/md5": []string{
++	"crypto/md5": {
+ 		"BlockSize",
+ 		"New",
+ 		"Size",
+ 		"Sum",
+ 	},
+-	"crypto/rand": []string{
++	"crypto/rand": {
+ 		"Int",
+ 		"Prime",
+ 		"Read",
+ 		"Reader",
+ 	},
+-	"crypto/rc4": []string{
++	"crypto/rc4": {
+ 		"Cipher",
+ 		"KeySizeError",
+ 		"NewCipher",
+ 	},
+-	"crypto/rsa": []string{
++	"crypto/rsa": {
+ 		"CRTValue",
+ 		"DecryptOAEP",
+ 		"DecryptPKCS1v15",
+@@ -382,13 +386,13 @@ var stdlib = map[string][]string{
+ 		"VerifyPKCS1v15",
+ 		"VerifyPSS",
+ 	},
+-	"crypto/sha1": []string{
++	"crypto/sha1": {
+ 		"BlockSize",
+ 		"New",
+ 		"Size",
+ 		"Sum",
+ 	},
+-	"crypto/sha256": []string{
++	"crypto/sha256": {
+ 		"BlockSize",
+ 		"New",
+ 		"New224",
+@@ -397,7 +401,7 @@ var stdlib = map[string][]string{
+ 		"Sum224",
+ 		"Sum256",
+ 	},
+-	"crypto/sha512": []string{
++	"crypto/sha512": {
+ 		"BlockSize",
+ 		"New",
+ 		"New384",
+@@ -412,7 +416,7 @@ var stdlib = map[string][]string{
+ 		"Sum512_224",
+ 		"Sum512_256",
+ 	},
+-	"crypto/subtle": []string{
++	"crypto/subtle": {
+ 		"ConstantTimeByteEq",
+ 		"ConstantTimeCompare",
+ 		"ConstantTimeCopy",
+@@ -420,7 +424,7 @@ var stdlib = map[string][]string{
+ 		"ConstantTimeLessOrEq",
+ 		"ConstantTimeSelect",
+ 	},
+-	"crypto/tls": []string{
++	"crypto/tls": {
+ 		"Certificate",
+ 		"CertificateRequestInfo",
+ 		"CipherSuite",
+@@ -506,7 +510,7 @@ var stdlib = map[string][]string{
+ 		"X25519",
+ 		"X509KeyPair",
+ 	},
+-	"crypto/x509": []string{
++	"crypto/x509": {
+ 		"CANotAuthorizedForExtKeyUsage",
+ 		"CANotAuthorizedForThisName",
+ 		"CertPool",
+@@ -588,6 +592,7 @@ var stdlib = map[string][]string{
+ 		"ParsePKCS1PublicKey",
+ 		"ParsePKCS8PrivateKey",
+ 		"ParsePKIXPublicKey",
++		"ParseRevocationList",
+ 		"PublicKeyAlgorithm",
+ 		"PureEd25519",
+ 		"RSA",
+@@ -611,7 +616,7 @@ var stdlib = map[string][]string{
+ 		"UnknownSignatureAlgorithm",
+ 		"VerifyOptions",
+ 	},
+-	"crypto/x509/pkix": []string{
++	"crypto/x509/pkix": {
+ 		"AlgorithmIdentifier",
+ 		"AttributeTypeAndValue",
+ 		"AttributeTypeAndValueSET",
+@@ -623,7 +628,7 @@ var stdlib = map[string][]string{
+ 		"RevokedCertificate",
+ 		"TBSCertificateList",
+ 	},
+-	"database/sql": []string{
++	"database/sql": {
+ 		"ColumnType",
+ 		"Conn",
+ 		"DB",
+@@ -664,7 +669,7 @@ var stdlib = map[string][]string{
+ 		"Tx",
+ 		"TxOptions",
+ 	},
+-	"database/sql/driver": []string{
++	"database/sql/driver": {
+ 		"Bool",
+ 		"ColumnConverter",
+ 		"Conn",
+@@ -712,12 +717,12 @@ var stdlib = map[string][]string{
+ 		"ValueConverter",
+ 		"Valuer",
+ 	},
+-	"debug/buildinfo": []string{
++	"debug/buildinfo": {
+ 		"BuildInfo",
+ 		"Read",
+ 		"ReadFile",
+ 	},
+-	"debug/dwarf": []string{
++	"debug/dwarf": {
+ 		"AddrType",
+ 		"ArrayType",
+ 		"Attr",
+@@ -968,7 +973,7 @@ var stdlib = map[string][]string{
+ 		"UnsupportedType",
+ 		"VoidType",
+ 	},
+-	"debug/elf": []string{
++	"debug/elf": {
+ 		"ARM_MAGIC_TRAMP_NUMBER",
+ 		"COMPRESS_HIOS",
+ 		"COMPRESS_HIPROC",
+@@ -1238,6 +1243,7 @@ var stdlib = map[string][]string{
+ 		"EM_L10M",
+ 		"EM_LANAI",
+ 		"EM_LATTICEMICO32",
++		"EM_LOONGARCH",
+ 		"EM_M16C",
+ 		"EM_M32",
+ 		"EM_M32C",
+@@ -1820,6 +1826,57 @@ var stdlib = map[string][]string{
+ 		"R_ARM_XPC25",
+ 		"R_INFO",
+ 		"R_INFO32",
++		"R_LARCH",
++		"R_LARCH_32",
++		"R_LARCH_64",
++		"R_LARCH_ADD16",
++		"R_LARCH_ADD24",
++		"R_LARCH_ADD32",
++		"R_LARCH_ADD64",
++		"R_LARCH_ADD8",
++		"R_LARCH_COPY",
++		"R_LARCH_IRELATIVE",
++		"R_LARCH_JUMP_SLOT",
++		"R_LARCH_MARK_LA",
++		"R_LARCH_MARK_PCREL",
++		"R_LARCH_NONE",
++		"R_LARCH_RELATIVE",
++		"R_LARCH_SOP_ADD",
++		"R_LARCH_SOP_AND",
++		"R_LARCH_SOP_ASSERT",
++		"R_LARCH_SOP_IF_ELSE",
++		"R_LARCH_SOP_NOT",
++		"R_LARCH_SOP_POP_32_S_0_10_10_16_S2",
++		"R_LARCH_SOP_POP_32_S_0_5_10_16_S2",
++		"R_LARCH_SOP_POP_32_S_10_12",
++		"R_LARCH_SOP_POP_32_S_10_16",
++		"R_LARCH_SOP_POP_32_S_10_16_S2",
++		"R_LARCH_SOP_POP_32_S_10_5",
++		"R_LARCH_SOP_POP_32_S_5_20",
++		"R_LARCH_SOP_POP_32_U",
++		"R_LARCH_SOP_POP_32_U_10_12",
++		"R_LARCH_SOP_PUSH_ABSOLUTE",
++		"R_LARCH_SOP_PUSH_DUP",
++		"R_LARCH_SOP_PUSH_GPREL",
++		"R_LARCH_SOP_PUSH_PCREL",
++		"R_LARCH_SOP_PUSH_PLT_PCREL",
++		"R_LARCH_SOP_PUSH_TLS_GD",
++		"R_LARCH_SOP_PUSH_TLS_GOT",
++		"R_LARCH_SOP_PUSH_TLS_TPREL",
++		"R_LARCH_SOP_SL",
++		"R_LARCH_SOP_SR",
++		"R_LARCH_SOP_SUB",
++		"R_LARCH_SUB16",
++		"R_LARCH_SUB24",
++		"R_LARCH_SUB32",
++		"R_LARCH_SUB64",
++		"R_LARCH_SUB8",
++		"R_LARCH_TLS_DTPMOD32",
++		"R_LARCH_TLS_DTPMOD64",
++		"R_LARCH_TLS_DTPREL32",
++		"R_LARCH_TLS_DTPREL64",
++		"R_LARCH_TLS_TPREL32",
++		"R_LARCH_TLS_TPREL64",
+ 		"R_MIPS",
+ 		"R_MIPS_16",
+ 		"R_MIPS_26",
+@@ -2315,7 +2372,7 @@ var stdlib = map[string][]string{
+ 		"Type",
+ 		"Version",
+ 	},
+-	"debug/gosym": []string{
++	"debug/gosym": {
+ 		"DecodingError",
+ 		"Func",
+ 		"LineTable",
+@@ -2327,7 +2384,7 @@ var stdlib = map[string][]string{
+ 		"UnknownFileError",
+ 		"UnknownLineError",
+ 	},
+-	"debug/macho": []string{
++	"debug/macho": {
+ 		"ARM64_RELOC_ADDEND",
+ 		"ARM64_RELOC_BRANCH26",
+ 		"ARM64_RELOC_GOT_LOAD_PAGE21",
+@@ -2457,13 +2514,20 @@ var stdlib = map[string][]string{
+ 		"X86_64_RELOC_TLV",
+ 		"X86_64_RELOC_UNSIGNED",
+ 	},
+-	"debug/pe": []string{
++	"debug/pe": {
+ 		"COFFSymbol",
++		"COFFSymbolAuxFormat5",
+ 		"COFFSymbolSize",
+ 		"DataDirectory",
+ 		"File",
+ 		"FileHeader",
+ 		"FormatError",
++		"IMAGE_COMDAT_SELECT_ANY",
++		"IMAGE_COMDAT_SELECT_ASSOCIATIVE",
++		"IMAGE_COMDAT_SELECT_EXACT_MATCH",
++		"IMAGE_COMDAT_SELECT_LARGEST",
++		"IMAGE_COMDAT_SELECT_NODUPLICATES",
++		"IMAGE_COMDAT_SELECT_SAME_SIZE",
+ 		"IMAGE_DIRECTORY_ENTRY_ARCHITECTURE",
+ 		"IMAGE_DIRECTORY_ENTRY_BASERELOC",
+ 		"IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT",
+@@ -2508,6 +2572,8 @@ var stdlib = map[string][]string{
+ 		"IMAGE_FILE_MACHINE_EBC",
+ 		"IMAGE_FILE_MACHINE_I386",
+ 		"IMAGE_FILE_MACHINE_IA64",
++		"IMAGE_FILE_MACHINE_LOONGARCH32",
++		"IMAGE_FILE_MACHINE_LOONGARCH64",
+ 		"IMAGE_FILE_MACHINE_M32R",
+ 		"IMAGE_FILE_MACHINE_MIPS16",
+ 		"IMAGE_FILE_MACHINE_MIPSFPU",
+@@ -2527,6 +2593,14 @@ var stdlib = map[string][]string{
+ 		"IMAGE_FILE_REMOVABLE_RUN_FROM_SWAP",
+ 		"IMAGE_FILE_SYSTEM",
+ 		"IMAGE_FILE_UP_SYSTEM_ONLY",
++		"IMAGE_SCN_CNT_CODE",
++		"IMAGE_SCN_CNT_INITIALIZED_DATA",
++		"IMAGE_SCN_CNT_UNINITIALIZED_DATA",
++		"IMAGE_SCN_LNK_COMDAT",
++		"IMAGE_SCN_MEM_DISCARDABLE",
++		"IMAGE_SCN_MEM_EXECUTE",
++		"IMAGE_SCN_MEM_READ",
++		"IMAGE_SCN_MEM_WRITE",
+ 		"IMAGE_SUBSYSTEM_EFI_APPLICATION",
+ 		"IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER",
+ 		"IMAGE_SUBSYSTEM_EFI_ROM",
+@@ -2553,7 +2627,7 @@ var stdlib = map[string][]string{
+ 		"StringTable",
+ 		"Symbol",
+ 	},
+-	"debug/plan9obj": []string{
++	"debug/plan9obj": {
+ 		"ErrNoSymbols",
+ 		"File",
+ 		"FileHeader",
+@@ -2567,16 +2641,16 @@ var stdlib = map[string][]string{
+ 		"SectionHeader",
+ 		"Sym",
+ 	},
+-	"embed": []string{
++	"embed": {
+ 		"FS",
+ 	},
+-	"encoding": []string{
++	"encoding": {
+ 		"BinaryMarshaler",
+ 		"BinaryUnmarshaler",
+ 		"TextMarshaler",
+ 		"TextUnmarshaler",
+ 	},
+-	"encoding/ascii85": []string{
++	"encoding/ascii85": {
+ 		"CorruptInputError",
+ 		"Decode",
+ 		"Encode",
+@@ -2584,7 +2658,7 @@ var stdlib = map[string][]string{
+ 		"NewDecoder",
+ 		"NewEncoder",
+ 	},
+-	"encoding/asn1": []string{
++	"encoding/asn1": {
+ 		"BitString",
+ 		"ClassApplication",
+ 		"ClassContextSpecific",
+@@ -2622,7 +2696,7 @@ var stdlib = map[string][]string{
+ 		"Unmarshal",
+ 		"UnmarshalWithParams",
+ 	},
+-	"encoding/base32": []string{
++	"encoding/base32": {
+ 		"CorruptInputError",
+ 		"Encoding",
+ 		"HexEncoding",
+@@ -2633,7 +2707,7 @@ var stdlib = map[string][]string{
+ 		"StdEncoding",
+ 		"StdPadding",
+ 	},
+-	"encoding/base64": []string{
++	"encoding/base64": {
+ 		"CorruptInputError",
+ 		"Encoding",
+ 		"NewDecoder",
+@@ -2646,7 +2720,10 @@ var stdlib = map[string][]string{
+ 		"StdPadding",
+ 		"URLEncoding",
+ 	},
+-	"encoding/binary": []string{
++	"encoding/binary": {
++		"AppendByteOrder",
++		"AppendUvarint",
++		"AppendVarint",
+ 		"BigEndian",
+ 		"ByteOrder",
+ 		"LittleEndian",
+@@ -2663,7 +2740,7 @@ var stdlib = map[string][]string{
+ 		"Varint",
+ 		"Write",
+ 	},
+-	"encoding/csv": []string{
++	"encoding/csv": {
+ 		"ErrBareQuote",
+ 		"ErrFieldCount",
+ 		"ErrQuote",
+@@ -2674,7 +2751,7 @@ var stdlib = map[string][]string{
+ 		"Reader",
+ 		"Writer",
+ 	},
+-	"encoding/gob": []string{
++	"encoding/gob": {
+ 		"CommonType",
+ 		"Decoder",
+ 		"Encoder",
+@@ -2685,7 +2762,7 @@ var stdlib = map[string][]string{
+ 		"Register",
+ 		"RegisterName",
+ 	},
+-	"encoding/hex": []string{
++	"encoding/hex": {
+ 		"Decode",
+ 		"DecodeString",
+ 		"DecodedLen",
+@@ -2699,7 +2776,7 @@ var stdlib = map[string][]string{
+ 		"NewDecoder",
+ 		"NewEncoder",
+ 	},
+-	"encoding/json": []string{
++	"encoding/json": {
+ 		"Compact",
+ 		"Decoder",
+ 		"Delim",
+@@ -2726,13 +2803,13 @@ var stdlib = map[string][]string{
+ 		"UnsupportedValueError",
+ 		"Valid",
+ 	},
+-	"encoding/pem": []string{
++	"encoding/pem": {
+ 		"Block",
+ 		"Decode",
+ 		"Encode",
+ 		"EncodeToMemory",
+ 	},
+-	"encoding/xml": []string{
++	"encoding/xml": {
+ 		"Attr",
+ 		"CharData",
+ 		"Comment",
+@@ -2766,13 +2843,13 @@ var stdlib = map[string][]string{
+ 		"UnmarshalerAttr",
+ 		"UnsupportedTypeError",
+ 	},
+-	"errors": []string{
++	"errors": {
+ 		"As",
+ 		"Is",
+ 		"New",
+ 		"Unwrap",
+ 	},
+-	"expvar": []string{
++	"expvar": {
+ 		"Do",
+ 		"Float",
+ 		"Func",
+@@ -2789,7 +2866,7 @@ var stdlib = map[string][]string{
+ 		"String",
+ 		"Var",
+ 	},
+-	"flag": []string{
++	"flag": {
+ 		"Arg",
+ 		"Args",
+ 		"Bool",
+@@ -2822,6 +2899,7 @@ var stdlib = map[string][]string{
+ 		"Set",
+ 		"String",
+ 		"StringVar",
++		"TextVar",
+ 		"Uint",
+ 		"Uint64",
+ 		"Uint64Var",
+@@ -2833,7 +2911,10 @@ var stdlib = map[string][]string{
+ 		"Visit",
+ 		"VisitAll",
+ 	},
+-	"fmt": []string{
++	"fmt": {
++		"Append",
++		"Appendf",
++		"Appendln",
+ 		"Errorf",
+ 		"Formatter",
+ 		"Fprint",
+@@ -2860,7 +2941,7 @@ var stdlib = map[string][]string{
+ 		"State",
+ 		"Stringer",
+ 	},
+-	"go/ast": []string{
++	"go/ast": {
+ 		"ArrayType",
+ 		"AssignStmt",
+ 		"Bad",
+@@ -2963,7 +3044,7 @@ var stdlib = map[string][]string{
+ 		"Visitor",
+ 		"Walk",
+ 	},
+-	"go/build": []string{
++	"go/build": {
+ 		"AllowBinary",
+ 		"ArchChar",
+ 		"Context",
+@@ -2980,7 +3061,7 @@ var stdlib = map[string][]string{
+ 		"Package",
+ 		"ToolDir",
+ 	},
+-	"go/build/constraint": []string{
++	"go/build/constraint": {
+ 		"AndExpr",
+ 		"Expr",
+ 		"IsGoBuild",
+@@ -2992,7 +3073,7 @@ var stdlib = map[string][]string{
+ 		"SyntaxError",
+ 		"TagExpr",
+ 	},
+-	"go/constant": []string{
++	"go/constant": {
+ 		"BinaryOp",
+ 		"BitLen",
+ 		"Bool",
+@@ -3033,7 +3114,7 @@ var stdlib = map[string][]string{
+ 		"Val",
+ 		"Value",
+ 	},
+-	"go/doc": []string{
++	"go/doc": {
+ 		"AllDecls",
+ 		"AllMethods",
+ 		"Example",
+@@ -3054,17 +3135,35 @@ var stdlib = map[string][]string{
+ 		"Type",
+ 		"Value",
+ 	},
+-	"go/format": []string{
++	"go/doc/comment": {
++		"Block",
++		"Code",
++		"DefaultLookupPackage",
++		"Doc",
++		"DocLink",
++		"Heading",
++		"Italic",
++		"Link",
++		"LinkDef",
++		"List",
++		"ListItem",
++		"Paragraph",
++		"Parser",
++		"Plain",
++		"Printer",
++		"Text",
++	},
++	"go/format": {
+ 		"Node",
+ 		"Source",
+ 	},
+-	"go/importer": []string{
++	"go/importer": {
+ 		"Default",
+ 		"For",
+ 		"ForCompiler",
+ 		"Lookup",
+ 	},
+-	"go/parser": []string{
++	"go/parser": {
+ 		"AllErrors",
+ 		"DeclarationErrors",
+ 		"ImportsOnly",
+@@ -3079,7 +3178,7 @@ var stdlib = map[string][]string{
+ 		"SpuriousErrors",
+ 		"Trace",
+ 	},
+-	"go/printer": []string{
++	"go/printer": {
+ 		"CommentedNode",
+ 		"Config",
+ 		"Fprint",
+@@ -3089,7 +3188,7 @@ var stdlib = map[string][]string{
+ 		"TabIndent",
+ 		"UseSpaces",
+ 	},
+-	"go/scanner": []string{
++	"go/scanner": {
+ 		"Error",
+ 		"ErrorHandler",
+ 		"ErrorList",
+@@ -3098,7 +3197,7 @@ var stdlib = map[string][]string{
+ 		"ScanComments",
+ 		"Scanner",
+ 	},
+-	"go/token": []string{
++	"go/token": {
+ 		"ADD",
+ 		"ADD_ASSIGN",
+ 		"AND",
+@@ -3196,7 +3295,7 @@ var stdlib = map[string][]string{
+ 		"XOR",
+ 		"XOR_ASSIGN",
+ 	},
+-	"go/types": []string{
++	"go/types": {
+ 		"ArgumentError",
+ 		"Array",
+ 		"AssertableTo",
+@@ -3347,17 +3446,17 @@ var stdlib = map[string][]string{
+ 		"WriteSignature",
+ 		"WriteType",
+ 	},
+-	"hash": []string{
++	"hash": {
+ 		"Hash",
+ 		"Hash32",
+ 		"Hash64",
+ 	},
+-	"hash/adler32": []string{
++	"hash/adler32": {
+ 		"Checksum",
+ 		"New",
+ 		"Size",
+ 	},
+-	"hash/crc32": []string{
++	"hash/crc32": {
+ 		"Castagnoli",
+ 		"Checksum",
+ 		"ChecksumIEEE",
+@@ -3371,7 +3470,7 @@ var stdlib = map[string][]string{
+ 		"Table",
+ 		"Update",
+ 	},
+-	"hash/crc64": []string{
++	"hash/crc64": {
+ 		"Checksum",
+ 		"ECMA",
+ 		"ISO",
+@@ -3381,7 +3480,7 @@ var stdlib = map[string][]string{
+ 		"Table",
+ 		"Update",
+ 	},
+-	"hash/fnv": []string{
++	"hash/fnv": {
+ 		"New128",
+ 		"New128a",
+ 		"New32",
+@@ -3389,16 +3488,18 @@ var stdlib = map[string][]string{
+ 		"New64",
+ 		"New64a",
+ 	},
+-	"hash/maphash": []string{
++	"hash/maphash": {
++		"Bytes",
+ 		"Hash",
+ 		"MakeSeed",
+ 		"Seed",
++		"String",
+ 	},
+-	"html": []string{
++	"html": {
+ 		"EscapeString",
+ 		"UnescapeString",
+ 	},
+-	"html/template": []string{
++	"html/template": {
+ 		"CSS",
+ 		"ErrAmbigContext",
+ 		"ErrBadHTML",
+@@ -3436,7 +3537,7 @@ var stdlib = map[string][]string{
+ 		"URL",
+ 		"URLQueryEscaper",
+ 	},
+-	"image": []string{
++	"image": {
+ 		"Alpha",
+ 		"Alpha16",
+ 		"Black",
+@@ -3489,7 +3590,7 @@ var stdlib = map[string][]string{
+ 		"ZP",
+ 		"ZR",
+ 	},
+-	"image/color": []string{
++	"image/color": {
+ 		"Alpha",
+ 		"Alpha16",
+ 		"Alpha16Model",
+@@ -3525,11 +3626,11 @@ var stdlib = map[string][]string{
+ 		"YCbCrModel",
+ 		"YCbCrToRGB",
+ 	},
+-	"image/color/palette": []string{
++	"image/color/palette": {
+ 		"Plan9",
+ 		"WebSafe",
+ 	},
+-	"image/draw": []string{
++	"image/draw": {
+ 		"Draw",
+ 		"DrawMask",
+ 		"Drawer",
+@@ -3541,7 +3642,7 @@ var stdlib = map[string][]string{
+ 		"RGBA64Image",
+ 		"Src",
+ 	},
+-	"image/gif": []string{
++	"image/gif": {
+ 		"Decode",
+ 		"DecodeAll",
+ 		"DecodeConfig",
+@@ -3553,7 +3654,7 @@ var stdlib = map[string][]string{
+ 		"GIF",
+ 		"Options",
+ 	},
+-	"image/jpeg": []string{
++	"image/jpeg": {
+ 		"Decode",
+ 		"DecodeConfig",
+ 		"DefaultQuality",
+@@ -3563,7 +3664,7 @@ var stdlib = map[string][]string{
+ 		"Reader",
+ 		"UnsupportedError",
+ 	},
+-	"image/png": []string{
++	"image/png": {
+ 		"BestCompression",
+ 		"BestSpeed",
+ 		"CompressionLevel",
+@@ -3578,11 +3679,11 @@ var stdlib = map[string][]string{
+ 		"NoCompression",
+ 		"UnsupportedError",
+ 	},
+-	"index/suffixarray": []string{
++	"index/suffixarray": {
+ 		"Index",
+ 		"New",
+ 	},
+-	"io": []string{
++	"io": {
+ 		"ByteReader",
+ 		"ByteScanner",
+ 		"ByteWriter",
+@@ -3634,7 +3735,7 @@ var stdlib = map[string][]string{
+ 		"WriterAt",
+ 		"WriterTo",
+ 	},
+-	"io/fs": []string{
++	"io/fs": {
+ 		"DirEntry",
+ 		"ErrClosed",
+ 		"ErrExist",
+@@ -3678,7 +3779,7 @@ var stdlib = map[string][]string{
+ 		"WalkDir",
+ 		"WalkDirFunc",
+ 	},
+-	"io/ioutil": []string{
++	"io/ioutil": {
+ 		"Discard",
+ 		"NopCloser",
+ 		"ReadAll",
+@@ -3688,7 +3789,7 @@ var stdlib = map[string][]string{
+ 		"TempFile",
+ 		"WriteFile",
+ 	},
+-	"log": []string{
++	"log": {
+ 		"Default",
+ 		"Fatal",
+ 		"Fatalf",
+@@ -3717,7 +3818,7 @@ var stdlib = map[string][]string{
+ 		"SetPrefix",
+ 		"Writer",
+ 	},
+-	"log/syslog": []string{
++	"log/syslog": {
+ 		"Dial",
+ 		"LOG_ALERT",
+ 		"LOG_AUTH",
+@@ -3752,7 +3853,7 @@ var stdlib = map[string][]string{
+ 		"Priority",
+ 		"Writer",
+ 	},
+-	"math": []string{
++	"math": {
+ 		"Abs",
+ 		"Acos",
+ 		"Acosh",
+@@ -3851,7 +3952,7 @@ var stdlib = map[string][]string{
+ 		"Y1",
+ 		"Yn",
+ 	},
+-	"math/big": []string{
++	"math/big": {
+ 		"Above",
+ 		"Accuracy",
+ 		"AwayFromZero",
+@@ -3878,7 +3979,7 @@ var stdlib = map[string][]string{
+ 		"ToZero",
+ 		"Word",
+ 	},
+-	"math/bits": []string{
++	"math/bits": {
+ 		"Add",
+ 		"Add32",
+ 		"Add64",
+@@ -3930,7 +4031,7 @@ var stdlib = map[string][]string{
+ 		"TrailingZeros8",
+ 		"UintSize",
+ 	},
+-	"math/cmplx": []string{
++	"math/cmplx": {
+ 		"Abs",
+ 		"Acos",
+ 		"Acosh",
+@@ -3959,7 +4060,7 @@ var stdlib = map[string][]string{
+ 		"Tan",
+ 		"Tanh",
+ 	},
+-	"math/rand": []string{
++	"math/rand": {
+ 		"ExpFloat64",
+ 		"Float32",
+ 		"Float64",
+@@ -3984,7 +4085,7 @@ var stdlib = map[string][]string{
+ 		"Uint64",
+ 		"Zipf",
+ 	},
+-	"mime": []string{
++	"mime": {
+ 		"AddExtensionType",
+ 		"BEncoding",
+ 		"ErrInvalidMediaParameter",
+@@ -3996,7 +4097,7 @@ var stdlib = map[string][]string{
+ 		"WordDecoder",
+ 		"WordEncoder",
+ 	},
+-	"mime/multipart": []string{
++	"mime/multipart": {
+ 		"ErrMessageTooLarge",
+ 		"File",
+ 		"FileHeader",
+@@ -4007,13 +4108,13 @@ var stdlib = map[string][]string{
+ 		"Reader",
+ 		"Writer",
+ 	},
+-	"mime/quotedprintable": []string{
++	"mime/quotedprintable": {
+ 		"NewReader",
+ 		"NewWriter",
+ 		"Reader",
+ 		"Writer",
+ 	},
+-	"net": []string{
++	"net": {
+ 		"Addr",
+ 		"AddrError",
+ 		"Buffers",
+@@ -4115,7 +4216,7 @@ var stdlib = map[string][]string{
+ 		"UnixListener",
+ 		"UnknownNetworkError",
+ 	},
+-	"net/http": []string{
++	"net/http": {
+ 		"AllowQuerySemicolons",
+ 		"CanonicalHeaderKey",
+ 		"Client",
+@@ -4168,6 +4269,7 @@ var stdlib = map[string][]string{
+ 		"ListenAndServe",
+ 		"ListenAndServeTLS",
+ 		"LocalAddrContextKey",
++		"MaxBytesError",
+ 		"MaxBytesHandler",
+ 		"MaxBytesReader",
+ 		"MethodConnect",
+@@ -4290,25 +4392,25 @@ var stdlib = map[string][]string{
+ 		"TrailerPrefix",
+ 		"Transport",
+ 	},
+-	"net/http/cgi": []string{
++	"net/http/cgi": {
+ 		"Handler",
+ 		"Request",
+ 		"RequestFromMap",
+ 		"Serve",
+ 	},
+-	"net/http/cookiejar": []string{
++	"net/http/cookiejar": {
+ 		"Jar",
+ 		"New",
+ 		"Options",
+ 		"PublicSuffixList",
+ 	},
+-	"net/http/fcgi": []string{
++	"net/http/fcgi": {
+ 		"ErrConnClosed",
+ 		"ErrRequestAborted",
+ 		"ProcessEnv",
+ 		"Serve",
+ 	},
+-	"net/http/httptest": []string{
++	"net/http/httptest": {
+ 		"DefaultRemoteAddr",
+ 		"NewRecorder",
+ 		"NewRequest",
+@@ -4318,7 +4420,7 @@ var stdlib = map[string][]string{
+ 		"ResponseRecorder",
+ 		"Server",
+ 	},
+-	"net/http/httptrace": []string{
++	"net/http/httptrace": {
+ 		"ClientTrace",
+ 		"ContextClientTrace",
+ 		"DNSDoneInfo",
+@@ -4327,7 +4429,7 @@ var stdlib = map[string][]string{
+ 		"WithClientTrace",
+ 		"WroteRequestInfo",
+ 	},
+-	"net/http/httputil": []string{
++	"net/http/httputil": {
+ 		"BufferPool",
+ 		"ClientConn",
+ 		"DumpRequest",
+@@ -4346,7 +4448,7 @@ var stdlib = map[string][]string{
+ 		"ReverseProxy",
+ 		"ServerConn",
+ 	},
+-	"net/http/pprof": []string{
++	"net/http/pprof": {
+ 		"Cmdline",
+ 		"Handler",
+ 		"Index",
+@@ -4354,7 +4456,7 @@ var stdlib = map[string][]string{
+ 		"Symbol",
+ 		"Trace",
+ 	},
+-	"net/mail": []string{
++	"net/mail": {
+ 		"Address",
+ 		"AddressParser",
+ 		"ErrHeaderNotPresent",
+@@ -4365,7 +4467,7 @@ var stdlib = map[string][]string{
+ 		"ParseDate",
+ 		"ReadMessage",
+ 	},
+-	"net/netip": []string{
++	"net/netip": {
+ 		"Addr",
+ 		"AddrFrom16",
+ 		"AddrFrom4",
+@@ -4384,7 +4486,7 @@ var stdlib = map[string][]string{
+ 		"Prefix",
+ 		"PrefixFrom",
+ 	},
+-	"net/rpc": []string{
++	"net/rpc": {
+ 		"Accept",
+ 		"Call",
+ 		"Client",
+@@ -4411,14 +4513,14 @@ var stdlib = map[string][]string{
+ 		"ServerCodec",
+ 		"ServerError",
+ 	},
+-	"net/rpc/jsonrpc": []string{
++	"net/rpc/jsonrpc": {
+ 		"Dial",
+ 		"NewClient",
+ 		"NewClientCodec",
+ 		"NewServerCodec",
+ 		"ServeConn",
+ 	},
+-	"net/smtp": []string{
++	"net/smtp": {
+ 		"Auth",
+ 		"CRAMMD5Auth",
+ 		"Client",
+@@ -4428,7 +4530,7 @@ var stdlib = map[string][]string{
+ 		"SendMail",
+ 		"ServerInfo",
+ 	},
+-	"net/textproto": []string{
++	"net/textproto": {
+ 		"CanonicalMIMEHeaderKey",
+ 		"Conn",
+ 		"Dial",
+@@ -4444,10 +4546,11 @@ var stdlib = map[string][]string{
+ 		"TrimString",
+ 		"Writer",
+ 	},
+-	"net/url": []string{
++	"net/url": {
+ 		"Error",
+ 		"EscapeError",
+ 		"InvalidHostError",
++		"JoinPath",
+ 		"Parse",
+ 		"ParseQuery",
+ 		"ParseRequestURI",
+@@ -4461,7 +4564,7 @@ var stdlib = map[string][]string{
+ 		"Userinfo",
+ 		"Values",
+ 	},
+-	"os": []string{
++	"os": {
+ 		"Args",
+ 		"Chdir",
+ 		"Chmod",
+@@ -4577,16 +4680,17 @@ var stdlib = map[string][]string{
+ 		"UserHomeDir",
+ 		"WriteFile",
+ 	},
+-	"os/exec": []string{
++	"os/exec": {
+ 		"Cmd",
+ 		"Command",
+ 		"CommandContext",
++		"ErrDot",
+ 		"ErrNotFound",
+ 		"Error",
+ 		"ExitError",
+ 		"LookPath",
+ 	},
+-	"os/signal": []string{
++	"os/signal": {
+ 		"Ignore",
+ 		"Ignored",
+ 		"Notify",
+@@ -4594,7 +4698,7 @@ var stdlib = map[string][]string{
+ 		"Reset",
+ 		"Stop",
+ 	},
+-	"os/user": []string{
++	"os/user": {
+ 		"Current",
+ 		"Group",
+ 		"Lookup",
+@@ -4607,7 +4711,7 @@ var stdlib = map[string][]string{
+ 		"UnknownUserIdError",
+ 		"User",
+ 	},
+-	"path": []string{
++	"path": {
+ 		"Base",
+ 		"Clean",
+ 		"Dir",
+@@ -4618,7 +4722,7 @@ var stdlib = map[string][]string{
+ 		"Match",
+ 		"Split",
+ 	},
+-	"path/filepath": []string{
++	"path/filepath": {
+ 		"Abs",
+ 		"Base",
+ 		"Clean",
+@@ -4644,12 +4748,12 @@ var stdlib = map[string][]string{
+ 		"WalkDir",
+ 		"WalkFunc",
+ 	},
+-	"plugin": []string{
++	"plugin": {
+ 		"Open",
+ 		"Plugin",
+ 		"Symbol",
+ 	},
+-	"reflect": []string{
++	"reflect": {
+ 		"Append",
+ 		"AppendSlice",
+ 		"Array",
+@@ -4724,7 +4828,7 @@ var stdlib = map[string][]string{
+ 		"VisibleFields",
+ 		"Zero",
+ 	},
+-	"regexp": []string{
++	"regexp": {
+ 		"Compile",
+ 		"CompilePOSIX",
+ 		"Match",
+@@ -4735,7 +4839,7 @@ var stdlib = map[string][]string{
+ 		"QuoteMeta",
+ 		"Regexp",
+ 	},
+-	"regexp/syntax": []string{
++	"regexp/syntax": {
+ 		"ClassNL",
+ 		"Compile",
+ 		"DotNL",
+@@ -4759,6 +4863,7 @@ var stdlib = map[string][]string{
+ 		"ErrMissingBracket",
+ 		"ErrMissingParen",
+ 		"ErrMissingRepeatArgument",
++		"ErrNestingDepth",
+ 		"ErrTrailingBackslash",
+ 		"ErrUnexpectedParen",
+ 		"Error",
+@@ -4813,7 +4918,7 @@ var stdlib = map[string][]string{
+ 		"UnicodeGroups",
+ 		"WasDollar",
+ 	},
+-	"runtime": []string{
++	"runtime": {
+ 		"BlockProfile",
+ 		"BlockProfileRecord",
+ 		"Breakpoint",
+@@ -4861,11 +4966,11 @@ var stdlib = map[string][]string{
+ 		"UnlockOSThread",
+ 		"Version",
+ 	},
+-	"runtime/cgo": []string{
++	"runtime/cgo": {
+ 		"Handle",
+ 		"NewHandle",
+ 	},
+-	"runtime/debug": []string{
++	"runtime/debug": {
+ 		"BuildInfo",
+ 		"BuildSetting",
+ 		"FreeOSMemory",
+@@ -4878,12 +4983,13 @@ var stdlib = map[string][]string{
+ 		"SetGCPercent",
+ 		"SetMaxStack",
+ 		"SetMaxThreads",
++		"SetMemoryLimit",
+ 		"SetPanicOnFault",
+ 		"SetTraceback",
+ 		"Stack",
+ 		"WriteHeapDump",
+ 	},
+-	"runtime/metrics": []string{
++	"runtime/metrics": {
+ 		"All",
+ 		"Description",
+ 		"Float64Histogram",
+@@ -4896,7 +5002,7 @@ var stdlib = map[string][]string{
+ 		"Value",
+ 		"ValueKind",
+ 	},
+-	"runtime/pprof": []string{
++	"runtime/pprof": {
+ 		"Do",
+ 		"ForLabels",
+ 		"Label",
+@@ -4912,7 +5018,7 @@ var stdlib = map[string][]string{
+ 		"WithLabels",
+ 		"WriteHeapProfile",
+ 	},
+-	"runtime/trace": []string{
++	"runtime/trace": {
+ 		"IsEnabled",
+ 		"Log",
+ 		"Logf",
+@@ -4924,7 +5030,8 @@ var stdlib = map[string][]string{
+ 		"Task",
+ 		"WithRegion",
+ 	},
+-	"sort": []string{
++	"sort": {
++		"Find",
+ 		"Float64Slice",
+ 		"Float64s",
+ 		"Float64sAreSorted",
+@@ -4947,7 +5054,7 @@ var stdlib = map[string][]string{
+ 		"Strings",
+ 		"StringsAreSorted",
+ 	},
+-	"strconv": []string{
++	"strconv": {
+ 		"AppendBool",
+ 		"AppendFloat",
+ 		"AppendInt",
+@@ -4987,7 +5094,7 @@ var stdlib = map[string][]string{
+ 		"Unquote",
+ 		"UnquoteChar",
+ 	},
+-	"strings": []string{
++	"strings": {
+ 		"Builder",
+ 		"Clone",
+ 		"Compare",
+@@ -5041,7 +5148,7 @@ var stdlib = map[string][]string{
+ 		"TrimSpace",
+ 		"TrimSuffix",
+ 	},
+-	"sync": []string{
++	"sync": {
+ 		"Cond",
+ 		"Locker",
+ 		"Map",
+@@ -5052,24 +5159,28 @@ var stdlib = map[string][]string{
+ 		"RWMutex",
+ 		"WaitGroup",
+ 	},
+-	"sync/atomic": []string{
++	"sync/atomic": {
+ 		"AddInt32",
+ 		"AddInt64",
+ 		"AddUint32",
+ 		"AddUint64",
+ 		"AddUintptr",
++		"Bool",
+ 		"CompareAndSwapInt32",
+ 		"CompareAndSwapInt64",
+ 		"CompareAndSwapPointer",
+ 		"CompareAndSwapUint32",
+ 		"CompareAndSwapUint64",
+ 		"CompareAndSwapUintptr",
++		"Int32",
++		"Int64",
+ 		"LoadInt32",
+ 		"LoadInt64",
+ 		"LoadPointer",
+ 		"LoadUint32",
+ 		"LoadUint64",
+ 		"LoadUintptr",
++		"Pointer",
+ 		"StoreInt32",
+ 		"StoreInt64",
+ 		"StorePointer",
+@@ -5082,9 +5193,12 @@ var stdlib = map[string][]string{
+ 		"SwapUint32",
+ 		"SwapUint64",
+ 		"SwapUintptr",
++		"Uint32",
++		"Uint64",
++		"Uintptr",
+ 		"Value",
+ 	},
+-	"syscall": []string{
++	"syscall": {
+ 		"AF_ALG",
+ 		"AF_APPLETALK",
+ 		"AF_ARP",
+@@ -10234,7 +10348,7 @@ var stdlib = map[string][]string{
+ 		"XP1_UNI_RECV",
+ 		"XP1_UNI_SEND",
+ 	},
+-	"syscall/js": []string{
++	"syscall/js": {
+ 		"CopyBytesToGo",
+ 		"CopyBytesToJS",
+ 		"Error",
+@@ -10256,7 +10370,7 @@ var stdlib = map[string][]string{
+ 		"ValueError",
+ 		"ValueOf",
+ 	},
+-	"testing": []string{
++	"testing": {
+ 		"AllocsPerRun",
+ 		"B",
+ 		"Benchmark",
+@@ -10284,12 +10398,12 @@ var stdlib = map[string][]string{
+ 		"TB",
+ 		"Verbose",
+ 	},
+-	"testing/fstest": []string{
++	"testing/fstest": {
+ 		"MapFS",
+ 		"MapFile",
+ 		"TestFS",
+ 	},
+-	"testing/iotest": []string{
++	"testing/iotest": {
+ 		"DataErrReader",
+ 		"ErrReader",
+ 		"ErrTimeout",
+@@ -10301,7 +10415,7 @@ var stdlib = map[string][]string{
+ 		"TimeoutReader",
+ 		"TruncateWriter",
+ 	},
+-	"testing/quick": []string{
++	"testing/quick": {
+ 		"Check",
+ 		"CheckEqual",
+ 		"CheckEqualError",
+@@ -10311,7 +10425,7 @@ var stdlib = map[string][]string{
+ 		"SetupError",
+ 		"Value",
+ 	},
+-	"text/scanner": []string{
++	"text/scanner": {
+ 		"Char",
+ 		"Comment",
+ 		"EOF",
+@@ -10334,7 +10448,7 @@ var stdlib = map[string][]string{
+ 		"String",
+ 		"TokenString",
+ 	},
+-	"text/tabwriter": []string{
++	"text/tabwriter": {
+ 		"AlignRight",
+ 		"Debug",
+ 		"DiscardEmptyColumns",
+@@ -10345,7 +10459,7 @@ var stdlib = map[string][]string{
+ 		"TabIndent",
+ 		"Writer",
+ 	},
+-	"text/template": []string{
++	"text/template": {
+ 		"ExecError",
+ 		"FuncMap",
+ 		"HTMLEscape",
+@@ -10363,7 +10477,7 @@ var stdlib = map[string][]string{
+ 		"Template",
+ 		"URLQueryEscaper",
+ 	},
+-	"text/template/parse": []string{
++	"text/template/parse": {
+ 		"ActionNode",
+ 		"BoolNode",
+ 		"BranchNode",
+@@ -10419,7 +10533,7 @@ var stdlib = map[string][]string{
+ 		"VariableNode",
+ 		"WithNode",
+ 	},
+-	"time": []string{
++	"time": {
+ 		"ANSIC",
+ 		"After",
+ 		"AfterFunc",
+@@ -10491,7 +10605,7 @@ var stdlib = map[string][]string{
+ 		"Wednesday",
+ 		"Weekday",
+ 	},
+-	"unicode": []string{
++	"unicode": {
+ 		"ASCII_Hex_Digit",
+ 		"Adlam",
+ 		"Ahom",
+@@ -10777,14 +10891,14 @@ var stdlib = map[string][]string{
+ 		"Zp",
+ 		"Zs",
+ 	},
+-	"unicode/utf16": []string{
++	"unicode/utf16": {
+ 		"Decode",
+ 		"DecodeRune",
+ 		"Encode",
+ 		"EncodeRune",
+ 		"IsSurrogate",
+ 	},
+-	"unicode/utf8": []string{
++	"unicode/utf8": {
+ 		"AppendRune",
+ 		"DecodeLastRune",
+ 		"DecodeLastRuneInString",
+@@ -10805,7 +10919,7 @@ var stdlib = map[string][]string{
+ 		"ValidRune",
+ 		"ValidString",
+ 	},
+-	"unsafe": []string{
++	"unsafe": {
+ 		"Alignof",
+ 		"ArbitraryType",
+ 		"Offsetof",
+diff --git a/vendor/modules.txt b/vendor/modules.txt
+index b76c34ac4..3816b83a8 100644
+--- a/vendor/modules.txt
++++ b/vendor/modules.txt
+@@ -743,7 +743,11 @@ golang.org/x/crypto/pkcs12/internal/rc2
+ golang.org/x/crypto/salsa20/salsa
+ golang.org/x/crypto/scrypt
+ golang.org/x/crypto/sha3
+-# golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4
++# golang.org/x/exp v0.0.0-20230307190834-24139beb5833
++## explicit; go 1.18
++golang.org/x/exp/constraints
++golang.org/x/exp/slices
++# golang.org/x/mod v0.6.0
+ ## explicit; go 1.17
+ golang.org/x/mod/internal/lazyregexp
+ golang.org/x/mod/module
+@@ -806,7 +810,7 @@ golang.org/x/text/width
+ # golang.org/x/time v0.2.0
+ ## explicit
+ golang.org/x/time/rate
+-# golang.org/x/tools v0.1.12
++# golang.org/x/tools v0.2.0
+ ## explicit; go 1.18
+ golang.org/x/tools/go/ast/astutil
+ golang.org/x/tools/imports
+-- 
+2.39.2
+
