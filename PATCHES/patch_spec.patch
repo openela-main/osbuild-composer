@@ -1,6 +1,6 @@
-From 8b15cc4ffa92b266a2dc9ec79395bb7b90d8a1df Mon Sep 17 00:00:00 2001
+From a4dbdceaf8634a5c4548d9bd24f6e9aaa4e8f14a Mon Sep 17 00:00:00 2001
 From: Mustafa Gezen <mustafa@ctrliq.com>
-Date: Wed, 15 Nov 2023 19:08:17 +0100
+Date: Tue, 5 Mar 2024 20:56:42 +0100
 Subject: [PATCH] OpenELA patch
 
 ---
@@ -8,25 +8,23 @@ Subject: [PATCH] OpenELA patch
  1 file changed, 8 insertions(+)
 
 diff --git a/SPECS/osbuild-composer.spec b/SPECS/osbuild-composer.spec
-index 0b9bb99..13afa8c 100644
+index db838c2..223dfa4 100644
 --- a/SPECS/osbuild-composer.spec
 +++ b/SPECS/osbuild-composer.spec
-@@ -154,6 +154,14 @@ install -m 0644 -vp repositories/rhel-%{rhel}*                     %{buildroot}%
+@@ -153,6 +153,14 @@ install -m 0644 -vp repositories/rhel-%{rhel}*                     %{buildroot}%
  %endif
  %endif
- 
+
 +%if 0%{?openela}
 +%if 0%{?openela} >= 9
-+install -m 0644 -vp repositories/openela-*                         %{buildroot}%{_datadir}/osbuild-composer/repositories/
++install -m 0644 -vp repositories/openela-*                           %{buildroot}%{_datadir}/osbuild-composer/repositories/
 +%else
-+install -m 0644 -vp repositories/openela-8*                        %{buildroot}%{_datadir}/osbuild-composer/repositories/
++install -m 0644 -vp repositories/openela-8*                          %{buildroot}%{_datadir}/osbuild-composer/repositories/
 +%endif
 +%endif
 +
  # Fedora can build for all included fedora releases
  %if 0%{?fedora}
  install -m 0644 -vp repositories/fedora-*                          %{buildroot}%{_datadir}/osbuild-composer/repositories/
--- 
+--
 2.39.3 (Apple Git-145)
-
-
