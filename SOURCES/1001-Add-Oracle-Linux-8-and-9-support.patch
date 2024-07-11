@@ -1,0 +1,445 @@
+From a59b033a6086f34f667f9dc18638283b0ddefd9b Mon Sep 17 00:00:00 2001
+From: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+Date: Wed, 24 Apr 2024 16:52:24 +0000
+Subject: [PATCH 1/5] Add Oracle Linux 8 and 9 support
+
+Signed-off-by: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+---
+ repositories/ol-810.json                      | 34 +++++++++++++++++++
+ repositories/ol-94.json                       | 34 +++++++++++++++++++
+ .../osbuild/images/pkg/distro/rhel7/azure.go  |  3 --
+ .../osbuild/images/pkg/distro/rhel7/qcow2.go  |  2 --
+ .../osbuild/images/pkg/distro/rhel8/ami.go    |  1 -
+ .../images/pkg/distro/rhel8/bare_metal.go     |  4 +--
+ .../osbuild/images/pkg/distro/rhel8/distro.go | 19 +++++++++--
+ .../osbuild/images/pkg/distro/rhel8/gce.go    |  5 ---
+ .../osbuild/images/pkg/distro/rhel8/qcow2.go  |  2 --
+ .../osbuild/images/pkg/distro/rhel8/ubi.go    |  2 --
+ .../osbuild/images/pkg/distro/rhel9/ami.go    |  1 -
+ .../images/pkg/distro/rhel9/bare_metal.go     |  7 ++--
+ .../osbuild/images/pkg/distro/rhel9/distro.go | 19 +++++++++--
+ .../osbuild/images/pkg/distro/rhel9/gce.go    |  5 ---
+ .../osbuild/images/pkg/distro/rhel9/qcow2.go  |  5 ++-
+ .../osbuild/images/pkg/distro/rhel9/ubi.go    |  1 -
+ 16 files changed, 107 insertions(+), 37 deletions(-)
+ create mode 100644 repositories/ol-810.json
+ create mode 100644 repositories/ol-94.json
+
+diff --git a/repositories/ol-810.json b/repositories/ol-810.json
+new file mode 100644
+index 0000000..1e5bcf4
+--- /dev/null
++++ b/repositories/ol-810.json
+@@ -0,0 +1,34 @@
++{
++    "aarch64": [
++        {
++            "name": "baseos",
++            "baseurl": "https://yum.oracle.com/repo/OracleLinux/OL8/baseos/latest/aarch64",
++            "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\nVersion: GnuPG v2.0.14 (GNU/Linux)\n\n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\n=dTZ0\n-----END PGP PUBLIC KEY BLOCK-----\n",
++            "check_gpg": true,
++            "rhsm": false
++        },
++        {
++            "name": "appstream",
++            "baseurl": "https://yum.oracle.com/repo/OracleLinux/OL8/appstream/aarch64",
++            "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\nVersion: GnuPG v2.0.14 (GNU/Linux)\n\n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\n=dTZ0\n-----END PGP PUBLIC KEY BLOCK-----\n",
++            "check_gpg": true,
++            "rhsm": false
++        }
++    ],
++    "x86_64": [
++        {
++            "name": "baseos",
++            "baseurl": "https://yum.oracle.com/repo/OracleLinux/OL8/baseos/latest/x86_64",
++            "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\nVersion: GnuPG v2.0.14 (GNU/Linux)\n\n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\n=dTZ0\n-----END PGP PUBLIC KEY BLOCK-----\n",
++            "check_gpg": true,
++            "rhsm": false
++        },
++        {
++            "name": "appstream",
++            "baseurl": "https://yum.oracle.com/repo/OracleLinux/OL8/appstream/x86_64",
++            "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\nVersion: GnuPG v2.0.14 (GNU/Linux)\n\n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\n=dTZ0\n-----END PGP PUBLIC KEY BLOCK-----\n",
++            "check_gpg": true,
++            "rhsm": false
++        }
++    ]
++}
+diff --git a/repositories/ol-94.json b/repositories/ol-94.json
+new file mode 100644
+index 0000000..bb06b89
+--- /dev/null
++++ b/repositories/ol-94.json
+@@ -0,0 +1,34 @@
++{
++    "aarch64": [
++        {
++            "name": "baseos",
++	    "baseurl": "https://yum.oracle.com/repo/OracleLinux/OL9/baseos/latest/aarch64",
++	    "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n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\n4QrtLe//99hXPcFVanIxgkdslnyYf4fjdbdlmNY=\n=xpaH\n-----END PGP PUBLIC KEY BLOCK-----",
++            "check_gpg": true,
++            "rhsm": false
++        },
++        {
++            "name": "appstream",
++	    "baseurl": "https://yum.oracle.com/repo/OracleLinux/OL9/appstream/aarch64",
++	    "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n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\n4QrtLe//99hXPcFVanIxgkdslnyYf4fjdbdlmNY=\n=xpaH\n-----END PGP PUBLIC KEY BLOCK-----",
++            "check_gpg": true,
++            "rhsm": false
++        }
++    ],
++    "x86_64": [
++        {
++            "name": "baseos",
++	    "baseurl": "https://yum.oracle.com/repo/OracleLinux/OL9/baseos/latest/x86_64",
++	    "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n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\n4QrtLe//99hXPcFVanIxgkdslnyYf4fjdbdlmNY=\n=xpaH\n-----END PGP PUBLIC KEY BLOCK-----",
++            "check_gpg": true,
++            "rhsm": false
++        },
++        {
++            "name": "appstream",
++	    "baseurl": "https://yum.oracle.com/repo/OracleLinux/OL9/appstream/x86_64",
++	    "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\n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\n4QrtLe//99hXPcFVanIxgkdslnyYf4fjdbdlmNY=\n=xpaH\n-----END PGP PUBLIC KEY BLOCK-----",
++            "check_gpg": true,
++            "rhsm": false
++        }
++    ]
++}
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel7/azure.go b/vendor/github.com/osbuild/images/pkg/distro/rhel7/azure.go
+index 11a956d..87b67da 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel7/azure.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel7/azure.go
+@@ -240,17 +240,14 @@ func azureRhuiCommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"hyperv-daemons",
+ 			"kernel",
+ 			"lvm2",
+-			"redhat-release-eula",
+ 			"redhat-support-tool",
+ 			"rh-dotnetcore11",
+-			"rhn-setup",
+ 			"rhui-azure-rhel7",
+ 			"rsync",
+ 			"shim-x64",
+ 			"tar",
+ 			"tcpdump",
+ 			"WALinuxAgent",
+-			"yum-rhn-plugin",
+ 			"yum-utils",
+ 		},
+ 		Exclude: []string{
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel7/qcow2.go b/vendor/github.com/osbuild/images/pkg/distro/rhel7/qcow2.go
+index a875fad..51e417c 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel7/qcow2.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel7/qcow2.go
+@@ -78,8 +78,6 @@ func qcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 
+ 			"cloud-init",
+ 			//"ovirt-guest-agent-common",
+-			"rhn-setup",
+-			"yum-rhn-plugin",
+ 			"cloud-utils-growpart",
+ 			"dracut-config-generic",
+ 			"tar",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/ami.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/ami.go
+index e8c47cb..080f8cc 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/ami.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/ami.go
+@@ -351,7 +351,6 @@ func ec2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"NetworkManager",
+ 			"NetworkManager-cloud-setup",
+ 			"redhat-release",
+-			"redhat-release-eula",
+ 			"rsync",
+ 			"tar",
+ 			"yum-utils",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/bare_metal.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/bare_metal.go
+index 05c54e5..93ea5e8 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/bare_metal.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/bare_metal.go
+@@ -86,7 +86,6 @@ func bareMetalPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"python3-jsonschema",
+ 			"qemu-guest-agent",
+ 			"redhat-release",
+-			"redhat-release-eula",
+ 			"rsync",
+ 			"selinux-policy-targeted",
+ 			"tar",
+@@ -114,6 +113,7 @@ func installerPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"anaconda-dracut",
+ 			"curl",
+ 			"dracut-config-generic",
++			"dracut-config-rescue",
+ 			"dracut-network",
+ 			"hostname",
+ 			"iwl100-firmware",
+@@ -214,7 +214,6 @@ func anacondaPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"libibverbs",
+ 			"libreport-plugin-bugzilla",
+ 			"libreport-plugin-reportuploader",
+-			"libreport-rhel-anaconda-bugzilla",
+ 			"librsvg2",
+ 			"linux-firmware",
+ 			"lklug-fonts",
+@@ -244,7 +243,6 @@ func anacondaPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"pigz",
+ 			"python3-pyatspi",
+ 			"rdma-core",
+-			"redhat-release-eula",
+ 			"rpm-ostree",
+ 			"rsync",
+ 			"rsyslog",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+index c20d26a..299e61d 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+@@ -152,6 +152,19 @@ func newDistro(name string, minor int) *distribution {
+ 			runner:             &runner.CentOS{Version: uint64(8)},
+ 			defaultImageConfig: defaultDistroImageConfig,
+ 		}
++	case "ol":
++		rd = distribution{
++			name:               fmt.Sprintf("ol-8.%d", minor),
++			product:            "Oracle Linux",
++			osVersion:          fmt.Sprintf("8.%d", minor),
++			releaseVersion:     "8",
++			modulePlatformID:   "platform:el8",
++			vendor:             "redhat",
++			ostreeRefTmpl:      "ol/8/%s/edge",
++			isolabelTmpl:       fmt.Sprintf("OL-8-%d-dvd-%%s", minor),
++			runner:             &runner.RHEL{Major: uint64(8), Minor: uint64(minor)},
++			defaultImageConfig: defaultDistroImageConfig,
++		}
+ 	default:
+ 		panic(fmt.Sprintf("unknown distro name: %s", name))
+ 	}
+@@ -483,12 +496,12 @@ func ParseID(idStr string) (*distro.ID, error) {
+ 		return nil, err
+ 	}
+ 
+-	if id.Name != "rhel" && id.Name != "centos" {
++	if id.Name != "rhel" && id.Name != "centos" && id.Name != "ol" {
+ 		return nil, fmt.Errorf("invalid distro name: %s", id.Name)
+ 	}
+ 
+ 	// Backward compatibility layer for "rhel-84" or "rhel-810"
+-	if id.Name == "rhel" && id.MinorVersion == -1 {
++	if (id.Name == "rhel" || id.Name == "ol") && id.MinorVersion == -1 {
+ 		if id.MajorVersion/10 == 8 {
+ 			// handle single digit minor version
+ 			id.MinorVersion = id.MajorVersion % 10
+@@ -510,7 +523,7 @@ func ParseID(idStr string) (*distro.ID, error) {
+ 	}
+ 
+ 	// RHEL uses minor version
+-	if id.Name == "rhel" && id.MinorVersion == -1 {
++	if (id.Name == "rhel" || id.Name == "ol") && id.MinorVersion == -1 {
+ 		return nil, fmt.Errorf("rhel requires minor version, but got: %d", id.MinorVersion)
+ 	}
+ 
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/gce.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/gce.go
+index 98b870d..cfbb2cb 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/gce.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/gce.go
+@@ -230,11 +230,6 @@ func gceCommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"tar",
+ 			"vim",
+ 
+-			// GCE guest tools
+-			"google-compute-engine",
+-			"google-osconfig-agent",
+-			"gce-disk-expand",
+-
+ 			// Not explicitly included in GCP kickstart, but present on the image
+ 			// for time synchronization
+ 			"chrony",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
+index 6e47113..ac0ce48 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
+@@ -90,7 +90,6 @@ func qcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"python3-jsonschema",
+ 			"qemu-guest-agent",
+ 			"redhat-release",
+-			"redhat-release-eula",
+ 			"rsync",
+ 			"tar",
+ 			"tcpdump",
+@@ -102,7 +101,6 @@ func qcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"alsa-lib",
+ 			"alsa-tools-firmware",
+ 			"biosdevname",
+-			"dnf-plugin-spacewalk",
+ 			"dracut-config-rescue",
+ 			"fedora-release",
+ 			"fedora-repos",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/ubi.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/ubi.go
+index 9ffdb83..838a280 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/ubi.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/ubi.go
+@@ -85,7 +85,6 @@ func ubiCommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"biosdevname",
+ 			"cpio",
+ 			"diffutils",
+-			"dnf-plugin-spacewalk",
+ 			"dracut",
+ 			"elfutils-debuginfod-client",
+ 			"fedora-release",
+@@ -122,7 +121,6 @@ func ubiCommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"plymouth",
+ 			"policycoreutils",
+ 			"python3-unbound",
+-			"redhat-release-eula",
+ 			"rng-tools",
+ 			"rpm-plugin-selinux",
+ 			"rpm-plugin-systemd-inhibit",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/ami.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/ami.go
+index 578833f..3ac96af 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/ami.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/ami.go
+@@ -313,7 +313,6 @@ func ec2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"langpacks-en",
+ 			"NetworkManager-cloud-setup",
+ 			"redhat-release",
+-			"redhat-release-eula",
+ 			"rsync",
+ 			"tuned",
+ 			"tar",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/bare_metal.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/bare_metal.go
+index 0429adb..436ba0c 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/bare_metal.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/bare_metal.go
+@@ -79,15 +79,12 @@ func bareMetalPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"python3-jsonschema",
+ 			"qemu-guest-agent",
+ 			"redhat-release",
+-			"redhat-release-eula",
+ 			"rsync",
+ 			"tar",
+ 			"tcpdump",
+ 			"tuned",
+ 		},
+-		Exclude: []string{
+-			"dracut-config-rescue",
+-		},
++		Exclude: nil,
+ 	}.Append(distroBuildPackageSet(t))
+ 
+ 	// Ensure to not pull in subscription-manager on non-RHEL distro
+@@ -108,6 +105,7 @@ func installerPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"anaconda-dracut",
+ 			"curl",
+ 			"dracut-config-generic",
++			"dracut-config-rescue",
+ 			"dracut-network",
+ 			"hostname",
+ 			"iwl100-firmware",
+@@ -271,7 +269,6 @@ func anacondaPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"prefixdevname",
+ 			"python3-pyatspi",
+ 			"rdma-core",
+-			"redhat-release-eula",
+ 			"rng-tools",
+ 			"rpcbind",
+ 			"rpm-ostree",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+index a3b57a9..bbd8d41 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+@@ -154,6 +154,19 @@ func newDistro(name string, minor int) *distribution {
+ 			runner:             &runner.CentOS{Version: uint64(9)},
+ 			defaultImageConfig: defaultDistroImageConfig,
+ 		}
++	case "ol":
++		rd = distribution{
++			name:               fmt.Sprintf("ol-9.%d", minor),
++			product:            "Oracle Linux",
++			osVersion:          fmt.Sprintf("9.%d", minor),
++			releaseVersion:     "9",
++			modulePlatformID:   "platform:el9",
++			vendor:             "redhat",
++			ostreeRefTmpl:      "ol/9/%s/edge",
++			isolabelTmpl:       fmt.Sprintf("OL-9-%d-dvd-%%s", minor),
++			runner:             &runner.RHEL{Major: uint64(9), Minor: uint64(minor)},
++			defaultImageConfig: defaultDistroImageConfig,
++		}
+ 	default:
+ 		panic(fmt.Sprintf("unknown distro name: %s", name))
+ 	}
+@@ -470,12 +483,12 @@ func ParseID(idStr string) (*distro.ID, error) {
+ 		return nil, err
+ 	}
+ 
+-	if id.Name != "rhel" && id.Name != "centos" {
++	if id.Name != "rhel" && id.Name != "centos" && id.Name != "ol" {
+ 		return nil, fmt.Errorf("invalid distro name: %s", id.Name)
+ 	}
+ 
+ 	// Backward compatibility layer for "rhel-93" or "rhel-910"
+-	if id.Name == "rhel" && id.MinorVersion == -1 {
++	if (id.Name == "rhel" || id.Name == "ol") && id.MinorVersion == -1 {
+ 		if id.MajorVersion/10 == 9 {
+ 			// handle single digit minor version
+ 			id.MinorVersion = id.MajorVersion % 10
+@@ -497,7 +510,7 @@ func ParseID(idStr string) (*distro.ID, error) {
+ 	}
+ 
+ 	// RHEL uses minor version
+-	if id.Name == "rhel" && id.MinorVersion == -1 {
++	if (id.Name == "rhel" || id.Name == "ol") && id.MinorVersion == -1 {
+ 		return nil, fmt.Errorf("rhel requires minor version, but got: %d", id.MinorVersion)
+ 	}
+ 
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/gce.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/gce.go
+index 8c8c4d3..21d89b0 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/gce.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/gce.go
+@@ -226,11 +226,6 @@ func gceCommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"tar",
+ 			"vim",
+ 
+-			// GCE guest tools
+-			"google-compute-engine",
+-			"google-osconfig-agent",
+-			"gce-disk-expand",
+-
+ 			// Not explicitly included in GCP kickstart, but present on the image
+ 			// for time synchronization
+ 			"chrony",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
+index 7efea8c..f45e3b5 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
+@@ -49,7 +49,6 @@ func qcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"python3-jsonschema",
+ 			"qemu-guest-agent",
+ 			"redhat-release",
+-			"redhat-release-eula",
+ 			"rsync",
+ 			"tar",
+ 			"tuned",
+@@ -89,6 +88,10 @@ func qcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"libertas-sd8787-firmware",
+ 			"nss",
+ 			"plymouth",
++			"rhn-check",
++			"rhn-setup",
++			"rhnsd",
++			"dnf-plugin-spacewalk",
+ 			"rng-tools",
+ 			"udisks2",
+ 		},
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/ubi.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/ubi.go
+index d49e653..6346b79 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/ubi.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/ubi.go
+@@ -82,7 +82,6 @@ func ubiCommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 			"glibc-langpack-en",
+ 			"openssl-pkcs11",
+ 			"python-unversioned-command",
+-			"redhat-release-eula",
+ 			"rpm-plugin-systemd-inhibit",
+ 		},
+ 	}
+-- 
+2.39.3
+

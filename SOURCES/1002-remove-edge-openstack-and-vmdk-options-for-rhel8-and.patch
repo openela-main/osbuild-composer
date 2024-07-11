@@ -1,0 +1,306 @@
+From fbdfe5b65e7b865ec7f01c84200a6c479dfce824 Mon Sep 17 00:00:00 2001
+From: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+Date: Tue, 16 Apr 2024 18:59:52 +0000
+Subject: [PATCH 2/5] remove edge, openstack and vmdk options for rhel8 and
+ rhel9
+
+Signed-off-by: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+---
+ internal/cloudapi/v2/compose_test.go          | 24 -------
+ .../osbuild/images/pkg/distro/rhel8/distro.go | 70 -------------------
+ .../osbuild/images/pkg/distro/rhel9/distro.go | 65 -----------------
+ 3 files changed, 159 deletions(-)
+
+diff --git a/internal/cloudapi/v2/compose_test.go b/internal/cloudapi/v2/compose_test.go
+index 0984282..a966ced 100644
+--- a/internal/cloudapi/v2/compose_test.go
++++ b/internal/cloudapi/v2/compose_test.go
+@@ -529,24 +529,6 @@ func TestGetImageRequests_ImageTypeConversion(t *testing.T) {
+ 			expectedImageType:  "azure-sap-rhui",
+ 			expectedTargetName: target.TargetNameAzureImage,
+ 		},
+-		{
+-			requestedImageType: ImageTypesEdgeCommit,
+-			requestedDistros:   []string{rhel8, centos8, rhel9, centos9},
+-			expectedImageType:  "edge-commit",
+-			expectedTargetName: target.TargetNameAWSS3,
+-		},
+-		{
+-			requestedImageType: ImageTypesEdgeContainer,
+-			requestedDistros:   []string{rhel8, centos8, rhel9, centos9},
+-			expectedImageType:  "edge-container",
+-			expectedTargetName: target.TargetNameContainer,
+-		},
+-		{
+-			requestedImageType: ImageTypesEdgeInstaller,
+-			requestedDistros:   []string{rhel8, centos8, rhel9, centos9},
+-			expectedImageType:  "edge-installer",
+-			expectedTargetName: target.TargetNameAWSS3,
+-		},
+ 		{
+ 			requestedImageType: ImageTypesGcp,
+ 			requestedDistros:   []string{rhel8, centos8, rhel9, centos9},
+@@ -625,12 +607,6 @@ func TestGetImageRequests_ImageTypeConversion(t *testing.T) {
+ 			expectedImageType:  "oci",
+ 			expectedTargetName: target.TargetNameOCIObjectStorage,
+ 		},
+-		{
+-			requestedImageType: ImageTypesVsphere,
+-			requestedDistros:   []string{fedora, rhel8, centos8, rhel9, centos9},
+-			expectedImageType:  "vmdk",
+-			expectedTargetName: target.TargetNameAWSS3,
+-		},
+ 		{
+ 			requestedImageType: ImageTypesVsphereOva,
+ 			requestedDistros:   []string{fedora, rhel8, centos8, rhel9, centos9},
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+index 299e61d..a843936 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+@@ -205,17 +205,6 @@ func newDistro(name string, minor int) *distribution {
+ 		ociImgType,
+ 	)
+ 
+-	x86_64.addImageTypes(
+-		&platform.X86{
+-			BIOS:       true,
+-			UEFIVendor: rd.vendor,
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_QCOW2,
+-			},
+-		},
+-		openstackImgType(),
+-	)
+-
+ 	ec2X86Platform := &platform.X86{
+ 		BIOS:       true,
+ 		UEFIVendor: rd.vendor,
+@@ -250,9 +239,6 @@ func newDistro(name string, minor int) *distribution {
+ 
+ 	x86_64.addImageTypes(
+ 		bareMetalX86Platform,
+-		edgeOCIImgType(rd),
+-		edgeCommitImgType(rd),
+-		edgeInstallerImgType(rd),
+ 		imageInstaller(),
+ 	)
+ 
+@@ -268,17 +254,6 @@ func newDistro(name string, minor int) *distribution {
+ 		gceImgType(rd),
+ 	)
+ 
+-	x86_64.addImageTypes(
+-		&platform.X86{
+-			BIOS:       true,
+-			UEFIVendor: rd.vendor,
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_VMDK,
+-			},
+-		},
+-		vmdkImgType(),
+-	)
+-
+ 	x86_64.addImageTypes(
+ 		&platform.X86{
+ 			BIOS:       true,
+@@ -307,16 +282,6 @@ func newDistro(name string, minor int) *distribution {
+ 		qcow2ImgType(rd),
+ 	)
+ 
+-	aarch64.addImageTypes(
+-		&platform.Aarch64{
+-			UEFIVendor: rd.vendor,
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_QCOW2,
+-			},
+-		},
+-		openstackImgType(),
+-	)
+-
+ 	aarch64.addImageTypes(
+ 		&platform.Aarch64{},
+ 		tarImgType(),
+@@ -330,9 +295,6 @@ func newDistro(name string, minor int) *distribution {
+ 
+ 	aarch64.addImageTypes(
+ 		bareMetalAarch64Platform,
+-		edgeOCIImgType(rd),
+-		edgeCommitImgType(rd),
+-		edgeInstallerImgType(rd),
+ 		imageInstaller(),
+ 	)
+ 
+@@ -413,25 +375,9 @@ func newDistro(name string, minor int) *distribution {
+ 		if !common.VersionLessThan(rd.osVersion, "8.6") {
+ 			// image types only available on 8.6 and later on RHEL
+ 			// These edge image types require FDO which aren't available on older versions
+-			x86_64.addImageTypes(
+-				bareMetalX86Platform,
+-				edgeRawImgType(),
+-			)
+-
+-			x86_64.addImageTypes(
+-				rawUEFIx86Platform,
+-				edgeSimplifiedInstallerImgType(rd),
+-			)
+-
+ 			azureEap := azureEap7RhuiImgType()
+ 			x86_64.addImageTypes(azureX64Platform, azureEap)
+ 
+-			aarch64.addImageTypes(
+-				rawAarch64Platform,
+-				edgeRawImgType(),
+-				edgeSimplifiedInstallerImgType(rd),
+-			)
+-
+ 			// The Azure image types require hyperv-daemons which isn't available on older versions
+ 			aarch64.addImageTypes(azureAarch64Platform, azureRhuiImgType(), azureByosImgType())
+ 		}
+@@ -466,24 +412,8 @@ func newDistro(name string, minor int) *distribution {
+ 		// add s390x to RHEL distro only
+ 		rd.addArches(s390x)
+ 	} else {
+-		x86_64.addImageTypes(
+-			bareMetalX86Platform,
+-			edgeRawImgType(),
+-		)
+-
+-		x86_64.addImageTypes(
+-			rawUEFIx86Platform,
+-			edgeSimplifiedInstallerImgType(rd),
+-		)
+-
+ 		x86_64.addImageTypes(azureX64Platform, azureImgType())
+ 
+-		aarch64.addImageTypes(
+-			rawAarch64Platform,
+-			edgeRawImgType(),
+-			edgeSimplifiedInstallerImgType(rd),
+-		)
+-
+ 		aarch64.addImageTypes(azureAarch64Platform, azureImgType())
+ 	}
+ 	rd.addArches(x86_64, aarch64, ppc64le)
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+index cddc189..8fbba10 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+@@ -209,17 +209,6 @@ func newDistro(name string, minor int) *distribution {
+ 		ociImgType,
+ 	)
+ 
+-	x86_64.addImageTypes(
+-		&platform.X86{
+-			BIOS:       true,
+-			UEFIVendor: rd.vendor,
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_QCOW2,
+-			},
+-		},
+-		openstackImgType,
+-	)
+-
+ 	azureX64Platform := &platform.X86{
+ 		BIOS:       true,
+ 		UEFIVendor: rd.vendor,
+@@ -235,17 +224,6 @@ func newDistro(name string, minor int) *distribution {
+ 		},
+ 	}
+ 
+-	x86_64.addImageTypes(
+-		&platform.X86{
+-			BIOS:       true,
+-			UEFIVendor: rd.vendor,
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_VMDK,
+-			},
+-		},
+-		vmdkImgType,
+-	)
+-
+ 	x86_64.addImageTypes(
+ 		&platform.X86{
+ 			BIOS:       true,
+@@ -300,23 +278,7 @@ func newDistro(name string, minor int) *distribution {
+ 			BIOS:       true,
+ 			UEFIVendor: rd.vendor,
+ 		},
+-		edgeOCIImgType,
+-		edgeCommitImgType,
+-		edgeInstallerImgType,
+-		edgeRawImgType,
+ 		imageInstaller,
+-		edgeAMIImgType,
+-	)
+-
+-	x86_64.addImageTypes(
+-		&platform.X86{
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_VMDK,
+-			},
+-			BIOS:       true,
+-			UEFIVendor: rd.vendor,
+-		},
+-		edgeVsphereImgType,
+ 	)
+ 
+ 	x86_64.addImageTypes(
+@@ -327,7 +289,6 @@ func newDistro(name string, minor int) *distribution {
+ 			BIOS:       false,
+ 			UEFIVendor: rd.vendor,
+ 		},
+-		edgeSimplifiedInstallerImgType,
+ 		minimalrawImgType,
+ 	)
+ 
+@@ -337,16 +298,6 @@ func newDistro(name string, minor int) *distribution {
+ 		wslImgType,
+ 	)
+ 
+-	aarch64.addImageTypes(
+-		&platform.Aarch64{
+-			UEFIVendor: rd.vendor,
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_QCOW2,
+-			},
+-		},
+-		openstackImgType,
+-	)
+-
+ 	aarch64.addImageTypes(
+ 		&platform.Aarch64{},
+ 		tarImgType,
+@@ -358,22 +309,7 @@ func newDistro(name string, minor int) *distribution {
+ 			BasePlatform: platform.BasePlatform{},
+ 			UEFIVendor:   rd.vendor,
+ 		},
+-		edgeCommitImgType,
+-		edgeOCIImgType,
+-		edgeInstallerImgType,
+-		edgeSimplifiedInstallerImgType,
+ 		imageInstaller,
+-		edgeAMIImgType,
+-	)
+-
+-	aarch64.addImageTypes(
+-		&platform.Aarch64{
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_VMDK,
+-			},
+-			UEFIVendor: rd.vendor,
+-		},
+-		edgeVsphereImgType,
+ 	)
+ 
+ 	aarch64.addImageTypes(
+@@ -383,7 +319,6 @@ func newDistro(name string, minor int) *distribution {
+ 			},
+ 			UEFIVendor: rd.vendor,
+ 		},
+-		edgeRawImgType,
+ 		minimalrawImgType,
+ 	)
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,461 @@
+From b8b8e969d85d9b09063e70b6d87b8165ddae498a Mon Sep 17 00:00:00 2001
+From: Alex Burmashev <alexander.burmashev@oracle.com>
+Date: Thu, 9 May 2024 14:43:36 +0000
+Subject: [PATCH 4/5] Add support for OCI hybrid images
+
+Also enabled building aarch64 OCI images.
+
+Mainly we enable --no-hostonly option for dracut and allow building OCI
+images on aarch64.
+
+JIRA: OLDIS-33593
+
+Signed-off-by: Alex Burmashev <alexander.burmashev@oracle.com>
+---
+ .../osbuild/images/pkg/distro/image_config.go |   1 +
+ .../osbuild/images/pkg/distro/rhel8/distro.go |   4 +-
+ .../osbuild/images/pkg/distro/rhel8/images.go |   4 +
+ .../osbuild/images/pkg/distro/rhel8/qcow2.go  | 119 ++++++++++++++
+ .../osbuild/images/pkg/distro/rhel9/distro.go |   3 +-
+ .../osbuild/images/pkg/distro/rhel9/images.go |   4 +-
+ .../osbuild/images/pkg/distro/rhel9/qcow2.go  | 149 +++++++++++++++---
+ .../osbuild/images/pkg/manifest/os.go         |   9 ++
+ .../images/pkg/osbuild/dracut_conf_stage.go   |   1 +
+ 9 files changed, 270 insertions(+), 24 deletions(-)
+
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/image_config.go b/vendor/github.com/osbuild/images/pkg/distro/image_config.go
+index da62dde..e6f0a0e 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/image_config.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/image_config.go
+@@ -66,6 +66,7 @@ type ImageConfig struct {
+ 
+ 	Files       []*fsnode.File
+ 	Directories []*fsnode.Directory
++	Hostonly        *bool
+ }
+ 
+ // InheritFrom inherits unset values from the provided parent configuration and
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+index 677229c..4eb7c0e 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+@@ -189,9 +189,6 @@ func newDistro(name string, minor int) *distribution {
+ 		name:   arch.ARCH_S390X.String(),
+ 	}
+ 
+-	ociImgType := qcow2ImgType(rd)
+-	ociImgType.name = "oci"
+-
+ 	x86_64.addImageTypes(
+ 		&platform.X86{
+ 			BIOS:       true,
+@@ -280,6 +277,7 @@ func newDistro(name string, minor int) *distribution {
+ 			},
+ 		},
+ 		qcow2ImgType(rd),
++		ociImgTypeAarch64,
+ 	)
+ 
+ 	aarch64.addImageTypes(
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go
+index ffc0f4c..791bac9 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go
+@@ -62,6 +62,10 @@ func osCustomizations(
+ 		osc.ExcludeDocs = *imageConfig.ExcludeDocs
+ 	}
+ 
++	if imageConfig.Hostonly != nil {
++		osc.Hostonly = *imageConfig.Hostonly
++	}
++
+ 	if !t.bootISO {
+ 		// don't put users and groups in the payload of an installer
+ 		// add them via kickstart instead
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
+index ac0ce48..0c70b41 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
+@@ -8,6 +8,50 @@ import (
+ 	"github.com/osbuild/images/pkg/subscription"
+ )
+ 
++var (
++	ociImgType = imageType{
++		name:          "oci",
++		filename:      "disk.qcow2",
++		mimeType:      "application/x-qemu-disk",
++		kernelOptions: "console=tty0 console=ttyS0,115200n8 no_timer_check rd.net.timeout.dhcp=10 rd.net.timeout.carrier=5 netroot=iscsi:169.254.0.2:::1:iqn.2015-02.oracle.boot:uefi rd.iscsi.param=node.session.timeo.replacement_timeout=6000 net.ifnames=1 nvme_core.shutdown_timeout=10 ipmi_si.tryacpi=0 ipmi_si.trydmi=0 libiscsi.debug_libiscsi_eh=1 loglevel=4 crash_kexec_post_notifiers",
++		packageSets: map[string]packageSetFunc{
++			osPkgsKey: OCIqcow2CommonPackageSet,
++		},
++		defaultImageConfig: &distro.ImageConfig{
++			DefaultTarget: common.ToPtr("multi-user.target"),
++			Hostonly:   common.ToPtr(true),
++		},
++		bootable:            true,
++		defaultSize:         10 * common.GibiByte,
++		image:               diskImage,
++		buildPipelines:      []string{"build"},
++		payloadPipelines:    []string{"os", "image", "qcow2"},
++		exports:             []string{"qcow2"},
++		basePartitionTables: defaultBasePartitionTables,
++	}
++
++	ociImgTypeAarch64 = imageType{
++		name:          "oci",
++		filename:      "disk.qcow2",
++		mimeType:      "application/x-qemu-disk",
++		kernelOptions: "ro LANG=en_US.UTF-8 console=ttyAMA0 console=ttyAMA0,115200 rd.luks=0 rd.md=0 rd.dm=0 rd.lvm.vg=ocivolume rd.lvm.lv=ocivolume/root rd.net.timeout.dhcp=10 rd.net.timeout.carrier=5 netroot=iscsi:169.254.0.2:::1:iqn.2015-02.oracle.boot:uefi rd.iscsi.param=node.session.timeo.replacement_timeout=6000 net.ifnames=1 nvme_core.shutdown_timeout=10 ipmi_si.tryacpi=0 ipmi_si.trydmi=0 libiscsi.debug_libiscsi_eh=1 loglevel=4 crash_kexec_post_notifiers crashkernel=2G-8G:256M,8G-512G:1G,512G-:3G",
++		packageSets: map[string]packageSetFunc{
++			osPkgsKey: OCIqcow2CommonPackageSet,
++		},
++		defaultImageConfig: &distro.ImageConfig{
++			DefaultTarget: common.ToPtr("multi-user.target"),
++			Hostonly:   common.ToPtr(true),
++		},
++		bootable:            true,
++		defaultSize:         10 * common.GibiByte,
++		image:               diskImage,
++		buildPipelines:      []string{"build"},
++		payloadPipelines:    []string{"os", "image", "qcow2"},
++		exports:             []string{"qcow2"},
++		basePartitionTables: defaultBasePartitionTables,
++	}
++)
++
+ func qcow2ImgType(rd distribution) imageType {
+ 	it := imageType{
+ 		name:          "qcow2",
+@@ -149,6 +193,81 @@ func qcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 	return ps
+ }
+ 
++func OCIqcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
++	ps := rpmmd.PackageSet{
++		Include: []string{
++			"@core",
++			"authselect-compat",
++			"iscsi-initiator-utils",
++			"chrony",
++			"cloud-init",
++			"cloud-utils-growpart",
++			"cockpit-system",
++			"cockpit-ws",
++			"dhcp-client",
++			"dnf",
++			"dnf-utils",
++			"dosfstools",
++			"dracut-norescue",
++			"net-tools",
++			"NetworkManager",
++			"nfs-utils",
++			"oddjob",
++			"oddjob-mkhomedir",
++			"psmisc",
++			"python3-jsonschema",
++			"qemu-guest-agent",
++			"redhat-release",
++			"rsync",
++			"tar",
++			"tcpdump",
++			"yum",
++		},
++		Exclude: []string{
++			"aic94xx-firmware",
++			"alsa-firmware",
++			"alsa-lib",
++			"alsa-tools-firmware",
++			"biosdevname",
++			"dracut-config-rescue",
++			"fedora-release",
++			"fedora-repos",
++			"firewalld",
++			"fwupd",
++			"iprutils",
++			"ivtv-firmware",
++			"iwl1000-firmware",
++			"iwl100-firmware",
++			"iwl105-firmware",
++			"iwl135-firmware",
++			"iwl2000-firmware",
++			"iwl2030-firmware",
++			"iwl3160-firmware",
++			"iwl3945-firmware",
++			"iwl4965-firmware",
++			"iwl5000-firmware",
++			"iwl5150-firmware",
++			"iwl6000-firmware",
++			"iwl6000g2a-firmware",
++			"iwl6000g2b-firmware",
++			"iwl6050-firmware",
++			"iwl7260-firmware",
++			"langpacks-*",
++			"langpacks-en",
++			"langpacks-en",
++			"libertas-sd8686-firmware",
++			"libertas-sd8787-firmware",
++			"libertas-usb8388-firmware",
++			"nss",
++			"plymouth",
++			"rng-tools",
++			"udisks2",
++		},
++	}.Append(distroSpecificPackageSet(t))
++
++	return ps
++}
++
+ func openstackCommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 	return rpmmd.PackageSet{
+ 		Include: []string{
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+index cbf99ae..ac42da2 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+@@ -193,8 +193,6 @@ func newDistro(name string, minor int) *distribution {
+ 	}
+ 
+ 	qcow2ImgType := mkQcow2ImgType(rd)
+-	ociImgType := qcow2ImgType
+-	ociImgType.name = "oci"
+ 
+ 	x86_64.addImageTypes(
+ 		&platform.X86{
+@@ -331,6 +329,7 @@ func newDistro(name string, minor int) *distribution {
+ 			},
+ 		},
+ 		qcow2ImgType,
++		ociImgTypeAarch64,
+ 	)
+ 	aarch64.addImageTypes(
+ 		&platform.Aarch64{
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go
+index 88e86f8..d267e86 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go
+@@ -58,7 +58,9 @@ func osCustomizations(
+ 	if imageConfig.ExcludeDocs != nil {
+ 		osc.ExcludeDocs = *imageConfig.ExcludeDocs
+ 	}
+-
++	if imageConfig.Hostonly != nil {
++		osc.Hostonly = *imageConfig.Hostonly
++	}
+ 	if !t.bootISO {
+ 		// don't put users and groups in the payload of an installer
+ 		// add them via kickstart instead
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
+index f45e3b5..38432fe 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
+@@ -28,6 +28,48 @@ var (
+ 		exports:             []string{"qcow2"},
+ 		basePartitionTables: defaultBasePartitionTables,
+ 	}
++
++	ociImgType = imageType{
++		name:          "oci",
++		filename:      "disk.qcow2",
++		mimeType:      "application/x-qemu-disk",
++		kernelOptions: "console=tty0 console=ttyS0,115200n8 no_timer_check rd.net.timeout.dhcp=10 rd.net.timeout.carrier=5 netroot=iscsi:169.254.0.2:::1:iqn.2015-02.oracle.boot:uefi rd.iscsi.param=node.session.timeo.replacement_timeout=6000 net.ifnames=1 nvme_core.shutdown_timeout=10 ipmi_si.tryacpi=0 ipmi_si.trydmi=0 libiscsi.debug_libiscsi_eh=1 loglevel=4 crash_kexec_post_notifiers",
++		packageSets: map[string]packageSetFunc{
++			osPkgsKey: OCIqcow2CommonPackageSet,
++		},
++		defaultImageConfig: &distro.ImageConfig{
++			DefaultTarget: common.ToPtr("multi-user.target"),
++			Hostonly:   common.ToPtr(true),
++		},
++		bootable:            true,
++		defaultSize:         10 * common.GibiByte,
++		image:               diskImage,
++		buildPipelines:      []string{"build"},
++		payloadPipelines:    []string{"os", "image", "qcow2"},
++		exports:             []string{"qcow2"},
++		basePartitionTables: defaultBasePartitionTables,
++	}
++
++	ociImgTypeAarch64 = imageType{
++		name:          "oci",
++		filename:      "disk.qcow2",
++		mimeType:      "application/x-qemu-disk",
++		kernelOptions: "ro LANG=en_US.UTF-8 console=ttyAMA0 console=ttyAMA0,115200 rd.luks=0 rd.md=0 rd.dm=0 rd.lvm.vg=ocivolume rd.lvm.lv=ocivolume/root rd.net.timeout.dhcp=10 rd.net.timeout.carrier=5 netroot=iscsi:169.254.0.2:::1:iqn.2015-02.oracle.boot:uefi rd.iscsi.param=node.session.timeo.replacement_timeout=6000 net.ifnames=1 nvme_core.shutdown_timeout=10 ipmi_si.tryacpi=0 ipmi_si.trydmi=0 libiscsi.debug_libiscsi_eh=1 loglevel=4 crash_kexec_post_notifiers crashkernel=2G-8G:256M,8G-512G:1G,512G-:3G",
++		packageSets: map[string]packageSetFunc{
++			osPkgsKey: OCIqcow2CommonPackageSet,
++		},
++		defaultImageConfig: &distro.ImageConfig{
++			DefaultTarget: common.ToPtr("multi-user.target"),
++			Hostonly:   common.ToPtr(true),
++		},
++		bootable:            true,
++		defaultSize:         10 * common.GibiByte,
++		image:               diskImage,
++		buildPipelines:      []string{"build"},
++		payloadPipelines:    []string{"os", "image", "qcow2"},
++		exports:             []string{"qcow2"},
++		basePartitionTables: defaultBasePartitionTables,
++	}
+ )
+ 
+ func qcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+@@ -109,6 +151,77 @@ func qcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 	return ps
+ }
+ 
++func OCIqcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
++	ps := rpmmd.PackageSet{
++		Include: []string{
++			"@core",
++			"authselect-compat",
++			"iscsi-initiator-utils",
++			"chrony",
++			"cloud-init",
++			"cloud-utils-growpart",
++			"cockpit-system",
++			"cockpit-ws",
++			"dnf-utils",
++			"dosfstools",
++			"nfs-utils",
++			"oddjob",
++			"oddjob-mkhomedir",
++			"psmisc",
++			"python3-jsonschema",
++			"qemu-guest-agent",
++			"redhat-release",
++			"rsync",
++			"tar",
++			"tuned",
++			"tcpdump",
++		},
++		Exclude: []string{
++			"aic94xx-firmware",
++			"alsa-firmware",
++			"alsa-lib",
++			"alsa-tools-firmware",
++			"biosdevname",
++			"dnf-plugin-spacewalk",
++			"dracut-config-rescue",
++			"fedora-release",
++			"fedora-repos",
++			"firewalld",
++			"iprutils",
++			"ivtv-firmware",
++			"iwl1000-firmware",
++			"iwl100-firmware",
++			"iwl105-firmware",
++			"iwl135-firmware",
++			"iwl2000-firmware",
++			"iwl2030-firmware",
++			"iwl3160-firmware",
++			"iwl3945-firmware",
++			"iwl4965-firmware",
++			"iwl5000-firmware",
++			"iwl5150-firmware",
++			"iwl6000-firmware",
++			"iwl6000g2a-firmware",
++			"iwl6000g2b-firmware",
++			"iwl6050-firmware",
++			"iwl7260-firmware",
++			"langpacks-*",
++			"langpacks-en",
++			"libertas-sd8787-firmware",
++			"nss",
++			"plymouth",
++			"rhn-check",
++			"rhn-setup",
++			"rhnsd",
++			"dnf-plugin-spacewalk",
++			"rng-tools",
++			"udisks2",
++		},
++	}.Append(distroSpecificPackageSet(t))
++
++	return ps
++}
++
+ func openstackCommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 	ps := rpmmd.PackageSet{
+ 		Include: []string{
+@@ -154,22 +267,22 @@ func qcowImageConfig(d distribution) *distro.ImageConfig {
+ }
+ 
+ func mkQcow2ImgType(d distribution) imageType {
+-	it := imageType{
+-		name:          "qcow2",
+-		filename:      "disk.qcow2",
+-		mimeType:      "application/x-qemu-disk",
+-		kernelOptions: "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
+-		packageSets: map[string]packageSetFunc{
+-			osPkgsKey: qcow2CommonPackageSet,
+-		},
+-		bootable:            true,
+-		defaultSize:         10 * common.GibiByte,
+-		image:               diskImage,
+-		buildPipelines:      []string{"build"},
+-		payloadPipelines:    []string{"os", "image", "qcow2"},
+-		exports:             []string{"qcow2"},
+-		basePartitionTables: defaultBasePartitionTables,
+-	}
+-	it.defaultImageConfig = qcowImageConfig(d)
+-	return it
++        it := imageType{
++                name:          "qcow2",
++                filename:      "disk.qcow2",
++                mimeType:      "application/x-qemu-disk",
++                kernelOptions: "console=tty0 console=ttyS0,115200n8 no_timer_check net.ifnames=0",
++                packageSets: map[string]packageSetFunc{
++                        osPkgsKey: qcow2CommonPackageSet,
++                },
++                bootable:            true,
++                defaultSize:         10 * common.GibiByte,
++                image:               diskImage,
++                buildPipelines:      []string{"build"},
++                payloadPipelines:    []string{"os", "image", "qcow2"},
++                exports:             []string{"qcow2"},
++                basePartitionTables: defaultBasePartitionTables,
++        }
++        it.defaultImageConfig = qcowImageConfig(d)
++        return it
+ }
+diff --git a/vendor/github.com/osbuild/images/pkg/manifest/os.go b/vendor/github.com/osbuild/images/pkg/manifest/os.go
+index ee44153..fe2694f 100644
+--- a/vendor/github.com/osbuild/images/pkg/manifest/os.go
++++ b/vendor/github.com/osbuild/images/pkg/manifest/os.go
+@@ -135,6 +135,7 @@ type OSCustomizations struct {
+ 	Files       []*fsnode.File
+ 
+ 	FIPS bool
++	Hostonly bool
+ }
+ 
+ // OS represents the filesystem tree of the target image. This roughly
+@@ -595,6 +596,14 @@ func (p *OS) serialize() osbuild.Pipeline {
+ 		pipeline.AddStage(osbuild.NewUdevRulesStage(udevRules))
+ 	}
+ 
++	if p.Hostonly {
++		pipeline.AddStage(osbuild.NewDracutStage(&osbuild.DracutStageOptions{
++			Kernel:    []string{p.kernelVer},
++			EarlyMicrocode: true,
++			Reproducible: true,
++		}))
++	}
++
+ 	if pt := p.PartitionTable; pt != nil {
+ 		kernelOptions := osbuild.GenImageKernelOptions(p.PartitionTable)
+ 		kernelOptions = append(kernelOptions, p.KernelOptionsAppend...)
+diff --git a/vendor/github.com/osbuild/images/pkg/osbuild/dracut_conf_stage.go b/vendor/github.com/osbuild/images/pkg/osbuild/dracut_conf_stage.go
+index 216c8aa..d9b9841 100644
+--- a/vendor/github.com/osbuild/images/pkg/osbuild/dracut_conf_stage.go
++++ b/vendor/github.com/osbuild/images/pkg/osbuild/dracut_conf_stage.go
+@@ -53,6 +53,7 @@ type DracutConfigFile struct {
+ 
+ 	// Create reproducible images
+ 	Reproducible *bool `json:"reproducible,omitempty"`
++
+ }
+ 
+ // Unexported alias for use in DracutConfigFile MarshalJSON() to prevent recursion
+-- 
+2.39.3
+

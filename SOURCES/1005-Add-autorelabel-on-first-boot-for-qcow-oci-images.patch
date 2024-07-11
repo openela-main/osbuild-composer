@@ -1,0 +1,80 @@
+From bf29324c4d7cd4c5d5930f41d50160c15d926652 Mon Sep 17 00:00:00 2001
+From: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+Date: Fri, 10 May 2024 23:20:50 +0000
+Subject: [PATCH 5/5] Add autorelabel on first boot for qcow oci images
+
+Signed-off-by: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+---
+ vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go | 1 +
+ vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go  | 2 ++
+ vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go | 1 +
+ vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go  | 2 ++
+ 4 files changed, 6 insertions(+)
+
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go
+index 791bac9..0508ab0 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go
+@@ -138,6 +138,7 @@ func osCustomizations(
+ 	// Relabel the tree, unless the `NoSElinux` flag is explicitly set to `true`
+ 	if imageConfig.NoSElinux == nil || imageConfig.NoSElinux != nil && !*imageConfig.NoSElinux {
+ 		osc.SElinux = "targeted"
++		osc.SELinuxForceRelabel = imageConfig.SELinuxForceRelabel
+ 	}
+ 
+ 	if t.arch.distro.isRHEL() && options.Facts != nil {
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
+index 0c70b41..44e2596 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
+@@ -20,6 +20,7 @@ var (
+ 		defaultImageConfig: &distro.ImageConfig{
+ 			DefaultTarget: common.ToPtr("multi-user.target"),
+ 			Hostonly:   common.ToPtr(true),
++			SELinuxForceRelabel: common.ToPtr(true),
+ 		},
+ 		bootable:            true,
+ 		defaultSize:         10 * common.GibiByte,
+@@ -41,6 +42,7 @@ var (
+ 		defaultImageConfig: &distro.ImageConfig{
+ 			DefaultTarget: common.ToPtr("multi-user.target"),
+ 			Hostonly:   common.ToPtr(true),
++			SELinuxForceRelabel: common.ToPtr(true),
+ 		},
+ 		bootable:            true,
+ 		defaultSize:         10 * common.GibiByte,
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go
+index d267e86..8b1f0cb 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go
+@@ -133,6 +133,7 @@ func osCustomizations(
+ 	// Relabel the tree, unless the `NoSElinux` flag is explicitly set to `true`
+ 	if imageConfig.NoSElinux == nil || imageConfig.NoSElinux != nil && !*imageConfig.NoSElinux {
+ 		osc.SElinux = "targeted"
++		osc.SELinuxForceRelabel = imageConfig.SELinuxForceRelabel
+ 	}
+ 
+ 	if t.arch.distro.isRHEL() && options.Facts != nil {
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
+index 38432fe..f39c27d 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
+@@ -40,6 +40,7 @@ var (
+ 		defaultImageConfig: &distro.ImageConfig{
+ 			DefaultTarget: common.ToPtr("multi-user.target"),
+ 			Hostonly:   common.ToPtr(true),
++			SELinuxForceRelabel: common.ToPtr(true),
+ 		},
+ 		bootable:            true,
+ 		defaultSize:         10 * common.GibiByte,
+@@ -61,6 +62,7 @@ var (
+ 		defaultImageConfig: &distro.ImageConfig{
+ 			DefaultTarget: common.ToPtr("multi-user.target"),
+ 			Hostonly:   common.ToPtr(true),
++			SELinuxForceRelabel: common.ToPtr(true),
+ 		},
+ 		bootable:            true,
+ 		defaultSize:         10 * common.GibiByte,
+-- 
+2.39.3
+

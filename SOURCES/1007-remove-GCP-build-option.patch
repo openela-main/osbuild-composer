@@ -1,0 +1,102 @@
+From 16d86cfec1a0e56d96e4c4684e8fd5a943178c88 Mon Sep 17 00:00:00 2001
+From: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+Date: Tue, 4 Jun 2024 23:54:00 +0000
+Subject: [PATCH] remove GCP build option
+
+Signed-off-by: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+---
+ internal/cloudapi/v2/compose_test.go              | 12 ------------
+ .../osbuild/images/pkg/distro/rhel8/distro.go     | 15 ---------------
+ .../osbuild/images/pkg/distro/rhel9/distro.go     | 13 -------------
+ 3 files changed, 40 deletions(-)
+
+diff --git a/internal/cloudapi/v2/compose_test.go b/internal/cloudapi/v2/compose_test.go
+index a966ced..8874553 100644
+--- a/internal/cloudapi/v2/compose_test.go
++++ b/internal/cloudapi/v2/compose_test.go
+@@ -529,18 +529,6 @@ func TestGetImageRequests_ImageTypeConversion(t *testing.T) {
+ 			expectedImageType:  "azure-sap-rhui",
+ 			expectedTargetName: target.TargetNameAzureImage,
+ 		},
+-		{
+-			requestedImageType: ImageTypesGcp,
+-			requestedDistros:   []string{rhel8, centos8, rhel9, centos9},
+-			expectedImageType:  "gce",
+-			expectedTargetName: target.TargetNameGCP,
+-		},
+-		{
+-			requestedImageType: ImageTypesGcpRhui,
+-			requestedDistros:   []string{rhel8, rhel9},
+-			expectedImageType:  "gce-rhui",
+-			expectedTargetName: target.TargetNameGCP,
+-		},
+ 		{
+ 			requestedImageType: ImageTypesGuestImage,
+ 			requestedDistros:   []string{fedora, rhel8, centos8, rhel9, centos9},
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+index 4eb7c0e..63114f9 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+@@ -239,18 +239,6 @@ func newDistro(name string, minor int) *distribution {
+ 		imageInstaller(),
+ 	)
+ 
+-	gceX86Platform := &platform.X86{
+-		UEFIVendor: rd.vendor,
+-		BasePlatform: platform.BasePlatform{
+-			ImageFormat: platform.FORMAT_GCE,
+-		},
+-	}
+-
+-	x86_64.addImageTypes(
+-		gceX86Platform,
+-		gceImgType(rd),
+-	)
+-
+ 	x86_64.addImageTypes(
+ 		&platform.X86{
+ 			BIOS:       true,
+@@ -404,9 +392,6 @@ func newDistro(name string, minor int) *distribution {
+ 			x86_64.addImageTypes(ec2X86Platform, ec2SapImgTypeX86_64(rd))
+ 		}
+ 
+-		// add GCE RHUI image to RHEL only
+-		x86_64.addImageTypes(gceX86Platform, gceRhuiImgType(rd))
+-
+ 		// add s390x to RHEL distro only
+ 		rd.addArches(s390x)
+ 	} else {
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+index d1c2c84..97ec103 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+@@ -245,17 +245,6 @@ func newDistro(name string, minor int) *distribution {
+ 		mkAMIImgTypeX86_64(),
+ 	)
+ 
+-	gceX86Platform := &platform.X86{
+-		UEFIVendor: rd.vendor,
+-		BasePlatform: platform.BasePlatform{
+-			ImageFormat: platform.FORMAT_GCE,
+-		},
+-	}
+-	x86_64.addImageTypes(
+-		gceX86Platform,
+-		mkGCEImageType(),
+-	)
+-
+ 	x86_64.addImageTypes(
+ 		&platform.X86{
+ 			BasePlatform: platform.BasePlatform{
+@@ -401,8 +390,6 @@ func newDistro(name string, minor int) *distribution {
+ 			mkEC2ImgTypeAarch64(rd.osVersion, rd.isRHEL()),
+ 		)
+ 
+-		// add GCE RHUI image to RHEL only
+-		x86_64.addImageTypes(gceX86Platform, mkGCERHUIImageType())
+ 	} else {
+ 		x86_64.addImageTypes(azureX64Platform, azureImgType)
+ 		aarch64.addImageTypes(azureAarch64Platform, azureImgType)
+-- 
+2.43.0
+
