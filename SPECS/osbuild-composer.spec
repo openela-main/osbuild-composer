@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:           osbuild-composer
-Release:        1.0.2%{?dist}
+Release:        1.0.3%{?dist}
 Summary:        An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -43,7 +43,9 @@ Patch1005:	1005-Add-autorelabel-on-first-boot-for-qcow-oci-images.patch
 Patch1006:	1006-Update-cmdline-parameters-for-OCI-images.patch
 Patch1007:	1007-remove-GCP-build-option.patch
 Patch1008:	1008-remove-vmware-ova-image-from-build-options.patch
-
+Patch1009:	1009-Support-using-repository-definitions-with-OCI-variab.patch
+Patch1010:	1010-Update-Oracle-repositories-to-contain-OCI-variables.patch
+Patch1011:	1011-Add-Systemd-Service-to-add-OCI-Repository.patch
 
 BuildRequires:  %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
 BuildRequires:  systemd
@@ -169,9 +171,9 @@ install -m 0644 -vp repositories/centos-stream-%{centos}*          %{buildroot}%
 %else
 %if 0%{?oraclelinux}
 %if 0%{?oraclelinux} >= 9
-install -m 0644 -vp repositories/ol-*				   %{buildroot}%{_datadir}/osbuild-composer/repositories/
+install -m 0644 -vp repositories/ol-*                             %{buildroot}%{_datadir}/osbuild-composer/repositories/
 %else
-install -m 0644 -vp repositories/ol-%{oraclelinux}*		   %{buildroot}%{_datadir}/osbuild-composer/repositories/
+install -m 0644 -vp repositories/ol-%{oraclelinux}*               %{buildroot}%{_datadir}/osbuild-composer/repositories/
 
 %endif
 %else
@@ -438,10 +440,17 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
-* Wed May 29 2024 Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com> - 101-1.0.2
-- support for building OL8/9 images on Oracle Linux 8 [Orabug: 36400619]
+* Mon Jul 22 2024 Alex Burmashev <alexander.burmashev@oracle.com> - 101-1.0.3
+- Populate oci variables for instances based on region deployed
+- Support using repository definitons with OCI variables
+- Update repositories to contain OCI variables
 
-* Wed May 29 2024 EL Errata <el-errata_ww@oracle.com> - 101-1.0.1
+* Fri May 10 2024 Alex Burmashev <alexander.burmashev@oracle.com> - 101-1.0.2
+- Add support for OCI hybrid images [JIRA: OLDIS-33593]
+- enable aarch64 OCI image builds [JIRA: OLDIS-33593]
+
+* Wed Apr 24 2024 Josue David Hernandez Gutierrez <josue.d.hernandez@redhat.com> - 101-1.0.1
+- support for building OL8/9 images on Oracle Linux 9 [Orabug: 36400619]
 
 * Mon Feb 26 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 101-1
 - New upstream release
@@ -471,9 +480,6 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 - New upstream release
 
 * Wed Oct 04 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 91-1
-- New upstream release
-
-* Thu Sep 21 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 90-1
 - New upstream release
 
 * Wed Sep 06 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 89-1
@@ -506,6 +512,9 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 * Wed Mar 08 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 77-1
 - New upstream release
 
+* Wed Mar 01 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 76-1
+- New upstream release
+
 * Wed Feb 22 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 75-1
 - New upstream release
 
@@ -530,6 +539,9 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 * Wed Nov 16 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 68-1
 - New upstream release
 
+* Thu Nov 03 2022 Tomas Hozza <thozza@redhat.com> - 67-2
+- Fix functional tests to make them pass in RHEL-9.2 gating
+
 * Wed Nov 02 2022 imagebuilder-bots+imagebuilder-bot@redhat.com <imagebuilder-bot> - 67-1
 - New upstream release
 
@@ -539,13 +551,13 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 * Wed Aug 24 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 60-1
 - New upstream release
 
-* Thu Aug 11 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 59-1
+* Wed Aug 10 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 59-1
 - New upstream release
 
 * Thu Jul 28 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 58-1
 - New upstream release
 
-* Mon Jul 18 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 57-1
+* Wed Jul 13 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 57-1
 - New upstream release
 
 * Wed Jun 15 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 55-1
@@ -554,81 +566,139 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 * Wed Jun 01 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 54-1
 - New upstream release
 
-* Mon May 23 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 53-1
+* Fri May 20 2022 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 53-1
 - New upstream release
 
 * Wed May 04 2022 Ondřej Budai <ondrej@budai.cz> - 51-1
 - New upstream release
 
-* Tue Mar 01 2022 Ondřej Budai <ondrej@budai.cz> - 46-1
+* Mon Feb 28 2022 Simon Steinbeiss <simon.steinbeiss@redhat.com> - 46-1
 - New upstream release
 
-* Sat Feb 19 2022 Ondřej Budai <ondrej@budai.cz> - 45-1
+* Fri Feb 18 2022 Ondřej Budai <ondrej@budai.cz> - 45-1
 - New upstream release
 
-* Mon Feb 14 2022 Thomas Lavocat <tlavocat@redhat.com> - 44-1
+* Fri Feb 11 2022 Thomas Lavocat <tlavocat@redhat.com> - 44-1
 - New upstream release
 
-* Mon Feb 07 2022 Thomas Lavocat <tlavocat@redhat.com> - 43-1
+* Wed Jan 26 2022 Thomas Lavocat <tlavocat@redhat.com> - 43-1
 - New upstream release
 
-* Tue Jan 18 2022 Thomas Lavocat <tlavocat@redhat.com> - 42-1
+* Wed Jan 12 2022 Thomas Lavocat <tlavocat@redhat.com> - 42-1
+- New upstream release
+
+* Wed Dec 22 2021 Ondřej Budai <ondrej@budai.cz> - 41-1
 - New upstream release
 
 * Thu Dec 09 2021 Ondřej Budai <ondrej@budai.cz> - 40-1
 - New upstream release
 
-* Fri Oct 15 2021 Achilleas Koutsou <achilleas@redhat.com> - 37-1
+* Wed Nov 24 2021 Chloe Kaubisch <chloe.kaubisch@gmail.com> - 39-1
 - New upstream release
 
-* Fri Oct 15 2021 Achilleas Koutsou <achilleas@redhat.com> - 36-1
+* Fri Nov 12 2021 'Diaa Sami' <'<disami@redhat.com>'> - 38-1
+- New upstream release
+
+* Tue Nov 02 2021 lavocatt - 37-1
+- New upstream release
+
+* Thu Oct 14 2021 Achilleas Koutsou <achilleas@redhat.com> - 36-1
 - New upstream release
 
 * Mon Aug 30 2021 Tom Gundersen <teg@jklm.no> - 33-1
 - New upstream release
 
-* Sun Aug 29 2021 Tom Gundersen <teg@jklm.no> - 32-2
+* Sun Aug 29 2021 Tom Gundersen <teg@jklm.no> - 32-1
 - New upstream release
 
-* Thu Aug 12 2021 Ondřej Budai <ondrej@budai.cz> - 31-1
+* Sun Aug 15 2021 Ondřej Budai <ondrej@budai.cz> - 31-1
+- New upstream release
+
+* Mon Aug 09 2021 Mohan Boddu <mboddu@redhat.com> - 30-2
+- Rebuilt for IMA sigs, glibc 2.34, aarch64 flags
+  Related: rhbz#1991688
+
+* Fri Jul 02 2021 Ondřej Budai <ondrej@budai.cz> - 30-1
+- New upstream release
+
+* Tue Jun 22 2021 Mohan Boddu <mboddu@redhat.com> - 29-3
+- Rebuilt for RHEL 9 BETA for openssl 3.0
+  Related: rhbz#1971065
+
+* Fri Apr 16 2021 Mohan Boddu <mboddu@redhat.com> - 29-2
+- Rebuilt for RHEL 9 BETA on Apr 15th 2021. Related: rhbz#1947937
+
+* Fri Mar 05 2021 Martin Sehnoutka <msehnout@redhat.com> - 29-1
 - New upstream release
 
 * Sat Feb 20 2021 Martin Sehnoutka <msehnout@redhat.com> - 28-1
 - New upstream release
 
-* Fri Feb 05 2021 Ondrej Budai <obudai@redhat.com> - 27-1
+* Thu Feb 04 2021 Ondrej Budai <obudai@redhat.com> - 27-1
 - New upstream release
+
+* Tue Jan 26 2021 Fedora Release Engineering <releng@fedoraproject.org> - 26-3
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_34_Mass_Rebuild
+
+* Thu Dec 17 2020 Ondrej Budai <obudai@redhat.com> - 26-2
+- Fix the compatibility with a new golang-github-azure-storage-blob 0.12
 
 * Thu Dec 17 2020 Ondrej Budai <obudai@redhat.com> - 26-1
 - New upstream release
 
-* Mon Nov 30 2020 Ondrej Budai <obudai@redhat.com> - 25-1
-- New upstream release 25 (rhbz#1883481)
+* Thu Nov 19 2020 Ondrej Budai <obudai@redhat.com> - 25-1
+- New upstream release
 
-* Thu Sep 03 2020 Tom Gundersen <tgunders@redhat.com> - 20.1-1
-- New upstream release 20.1 (rhbz#1872370)
+* Thu Nov 12 2020 Ondrej Budai <obudai@redhat.com> - 24-1
+- New upstream release
 
-* Sun Aug 23 2020 Tom Gundersen <tgunders@redhat.com> - 20-1
-- New upstream release 20 (rhbz#1871184 and rhbz#1871179)
+* Fri Nov 06 2020 Ondrej Budai <obudai@redhat.com> - 23-1
+- New upstream release
 
-* Thu Aug 13 2020 Tom Gundersen <tgunders@redhat.com> - 19-1
-- New upstream release 19 (rhbz#1866015 and rhbz#1866013)
+* Fri Oct 16 2020 Ondrej Budai <obudai@redhat.com> - 22-1
+- New upstream release
 
-* Thu Jul 09 2020 Ondrej Budai <obudai@redhat.com> - 17-1
-- New upstream release 17 (rhbz#1831653)
-- Obsolete lorax-composer in favor of osbuild-composer (rhbz#1836844)
+* Sun Aug 23 2020 Tom Gundersen <teg@jklm.no> - 20-1
+- New upstream release
+
+* Tue Aug 11 2020 Tom Gundersen <teg@jklm.no> - 19-1
+- New upstream release
+
+* Tue Jul 28 2020 Fedora Release Engineering <releng@fedoraproject.org> - 18-2
+- Rebuilt for https://fedoraproject.org/wiki/Fedora_33_Mass_Rebuild
+
+* Wed Jul 22 2020 Ondrej Budai <obudai@redhat.com> - 18-1
+- New upstream release
+
+* Wed Jul 08 2020 Ondrej Budai <obudai@redhat.com> - 17-1
+- New upstream release
 
 * Mon Jun 29 2020 Ondrej Budai <obudai@redhat.com> - 16-1
-- New upstream release 16 (rhbz#1831653)
+- New upstream release
 
 * Fri Jun 12 2020 Ondrej Budai <obudai@redhat.com> - 15-1
-- New upstream release 15 (rhbz#1831653)
+- New upstream release
 
 * Thu Jun 04 2020 Ondrej Budai <obudai@redhat.com> - 14-1
-- New upstream release 14 (rhbz#1831653)
+- New upstream release
+
+* Fri May 29 2020 Ondrej Budai <obudai@redhat.com> - 13-2
+- Add missing osbuild-ostree dependency
 
 * Thu May 28 2020 Ondrej Budai <obudai@redhat.com> - 13-1
-- New upstream release 13 (rhbz#1831653)
+- New upstream release
 
-* Tue May 05 2020 Ondrej Budai <obudai@redhat.com> - 11-1
-- Initial package (renamed from golang-github-osbuild-composer) (rhbz#1771887)
+* Thu May 14 2020 Ondrej Budai <obudai@redhat.com> - 12-1
+- New upstream release
+
+* Wed Apr 29 2020 Ondrej Budai <obudai@redhat.com> - 11-1
+- New upstream release
+
+* Wed Apr 15 2020 Ondrej Budai <obudai@redhat.com> - 10-1
+- New upstream release
+
+* Wed Apr 01 2020 Ondrej Budai <obudai@redhat.com> - 9-1
+- New upstream release
+
+* Mon Mar 23 2020 Ondrej Budai <obudai@redhat.com> - 8-1
+- Initial package (renamed from golang-github-osbuild-composer)

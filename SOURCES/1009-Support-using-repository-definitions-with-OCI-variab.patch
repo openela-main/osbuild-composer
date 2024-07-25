@@ -1,0 +1,94 @@
+From 7d51298e338bffe84bfd8c178a337bfb4ff58701 Mon Sep 17 00:00:00 2001
+From: Alex Burmashev <alexander.burmashev@oracle.com>
+Date: Fri, 19 Jul 2024 13:26:03 +0000
+Subject: [PATCH] Support using repository definitions with OCI variables.
+
+We can use repository definitions in a format, more similar to generic Oracle repositories
+with DNF vars.
+Essentially in osbuild-composer log when parsing repos, we at first parse variables, then process
+original repo file in memory and replace vars with their values and write modified repo to buffer.
+After that we use buffer to actually populate repository data.
+
+If we have failed to read ocidomain, which is the key variable, we fallback to values to generic public repos.
+
+Signed-off-by: Alex Burmashev <alexander.burmashev@oracle.com>
+---
+ .../osbuild/images/pkg/rpmmd/repository.go    | 44 +++++++++++++++++--
+ 1 file changed, 41 insertions(+), 3 deletions(-)
+
+diff --git a/vendor/github.com/osbuild/images/pkg/rpmmd/repository.go b/vendor/github.com/osbuild/images/pkg/rpmmd/repository.go
+index 64591a2..b19ad98 100644
+--- a/vendor/github.com/osbuild/images/pkg/rpmmd/repository.go
++++ b/vendor/github.com/osbuild/images/pkg/rpmmd/repository.go
+@@ -8,7 +8,8 @@ import (
+ 	"sort"
+ 	"strings"
+ 	"time"
+-
++	"bufio"
++	"bytes"
+ 	"github.com/gobwas/glob"
+ )
+ 
+@@ -221,12 +222,48 @@ func LoadRepositoriesFromFile(filename string) (map[string][]RepoConfig, error)
+ 		return nil, err
+ 	}
+ 	defer f.Close()
++	var ocidomain, ociregion, region []byte
++
++	var OCIlines []string
++	ocidomain = []byte("oracle.com")
++	ociregion = []byte("")
++	region = []byte("")
+ 
++	ociregion, err = os.ReadFile("/etc/dnf/vars/ociregion")
++	if err != nil {
++		fmt.Println("Error while reading file: /etc/dnf/vars/ociregion")
++	}
++	region, err = os.ReadFile("/etc/dnf/vars/region")
++	if err != nil {
++		fmt.Println("Error while reading file: /etc/dnf/vars/region")
++	}
++	ocidomain, err = os.ReadFile("/etc/dnf/vars/ocidomain")
++	if err != nil {
++		fmt.Println("Error while reading file: /etc/dnf/vars/ocidomain")
++	}
++	if ocidomain == nil {
++		ocidomain = []byte("oracle.com")
++		ociregion = []byte("")
++	}
++	scanner := bufio.NewScanner(f)
++	OCIreplacer := strings.NewReplacer("$ocidomain", strings.TrimSuffix(string(ocidomain), "\n"), "$ociregion", strings.TrimSuffix(string(ociregion), "\n"), "$region", strings.TrimSuffix(string(region), "\n"))
++	for scanner.Scan() {
++		line := scanner.Text()
++		OCIline := OCIreplacer.Replace(line)
++		OCIlines = append(OCIlines, OCIline)
++		continue
++	}
++	if err := scanner.Err(); err != nil {
++		panic(err)
++	}
++	fOCI := strings.Join(OCIlines, "\n")
+ 	var reposMap map[string][]repository
+ 	repoConfigs := make(map[string][]RepoConfig)
+-
+-	err = json.NewDecoder(f).Decode(&reposMap)
++	buf := new(bytes.Buffer)
++	fmt.Fprint(buf, fOCI)
++	err = json.NewDecoder(buf).Decode(&reposMap)
+ 	if err != nil {
++		fmt.Println("Error parsing the repo")
+ 		return nil, err
+ 	}
+ 
+@@ -234,6 +271,7 @@ func LoadRepositoriesFromFile(filename string) (map[string][]RepoConfig, error)
+ 		for idx := range repos {
+ 			repo := repos[idx]
+ 			var urls []string
++
+ 			if repo.BaseURL != "" {
+ 				urls = []string{repo.BaseURL}
+ 			}
+-- 
+2.43.5
+
