@@ -1,0 +1,76 @@
+From 8ba2746a79f2ad86d371e1bdd481eb2d0469b927 Mon Sep 17 00:00:00 2001
+From: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+Date: Wed, 5 Jun 2024 15:33:36 +0000
+Subject: [PATCH] remove vmware (ova) image from build options
+
+Signed-off-by: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+---
+ internal/cloudapi/v2/compose_test.go                  |  6 ------
+ .../osbuild/images/pkg/distro/rhel8/distro.go         | 11 -----------
+ .../osbuild/images/pkg/distro/rhel9/distro.go         | 11 -----------
+ 3 files changed, 28 deletions(-)
+
+diff --git a/internal/cloudapi/v2/compose_test.go b/internal/cloudapi/v2/compose_test.go
+index 8874553..edd6ad8 100644
+--- a/internal/cloudapi/v2/compose_test.go
++++ b/internal/cloudapi/v2/compose_test.go
+@@ -595,12 +595,6 @@ func TestGetImageRequests_ImageTypeConversion(t *testing.T) {
+ 			expectedImageType:  "oci",
+ 			expectedTargetName: target.TargetNameOCIObjectStorage,
+ 		},
+-		{
+-			requestedImageType: ImageTypesVsphereOva,
+-			requestedDistros:   []string{fedora, rhel8, centos8, rhel9, centos9},
+-			expectedImageType:  "ova",
+-			expectedTargetName: target.TargetNameAWSS3,
+-		},
+ 		{
+ 			requestedImageType: ImageTypesWsl,
+ 			requestedDistros:   []string{fedora, rhel8, centos8, rhel9, centos9},
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+index 63114f9..3beca5e 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/distro.go
+@@ -239,17 +239,6 @@ func newDistro(name string, minor int) *distribution {
+ 		imageInstaller(),
+ 	)
+ 
+-	x86_64.addImageTypes(
+-		&platform.X86{
+-			BIOS:       true,
+-			UEFIVendor: rd.vendor,
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_OVA,
+-			},
+-		},
+-		ovaImgType(),
+-	)
+-
+ 	x86_64.addImageTypes(
+ 		&platform.X86{},
+ 		tarImgType(),
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+index 97ec103..44b7e44 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/distro.go
+@@ -222,17 +222,6 @@ func newDistro(name string, minor int) *distribution {
+ 		},
+ 	}
+ 
+-	x86_64.addImageTypes(
+-		&platform.X86{
+-			BIOS:       true,
+-			UEFIVendor: rd.vendor,
+-			BasePlatform: platform.BasePlatform{
+-				ImageFormat: platform.FORMAT_OVA,
+-			},
+-		},
+-		ovaImgType,
+-	)
+-
+ 	ec2X86Platform := &platform.X86{
+ 		BIOS:       true,
+ 		UEFIVendor: rd.vendor,
+-- 
+2.43.0
+

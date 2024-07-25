@@ -1,0 +1,436 @@
+From 80faabbf67f040196ebfdcfc9ff4e610e80eef43 Mon Sep 17 00:00:00 2001
+From: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+Date: Mon, 1 Jul 2024 23:55:24 +0000
+Subject: [PATCH] Add Systemd Service to add OCI Repository
+
+Signed-off-by: Josue David Hernandez Gutierrez <josue.d.hernandez@oracle.com>
+---
+ .../osbuild/images/pkg/distro/image_config.go |   1 +
+ .../osbuild/images/pkg/distro/rhel8/images.go |   1 +
+ .../osbuild/images/pkg/distro/rhel8/qcow2.go  | 104 +++++++++++++++++
+ .../osbuild/images/pkg/distro/rhel9/images.go |   1 +
+ .../osbuild/images/pkg/distro/rhel9/qcow2.go  | 105 ++++++++++++++++++
+ .../osbuild/images/pkg/manifest/os.go         |   5 +
+ .../pkg/osbuild/systemd_unit_create_stage.go  |  76 +++++++++++++
+ 7 files changed, 293 insertions(+)
+ create mode 100644 vendor/github.com/osbuild/images/pkg/osbuild/systemd_unit_create_stage.go
+
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/image_config.go b/vendor/github.com/osbuild/images/pkg/distro/image_config.go
+index e6f0a0e..3fe4a82 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/image_config.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/image_config.go
+@@ -44,6 +44,7 @@ type ImageConfig struct {
+ 	Modprobe            []*osbuild.ModprobeStageOptions
+ 	DracutConf          []*osbuild.DracutConfStageOptions
+ 	SystemdUnit         []*osbuild.SystemdUnitStageOptions
++	SystemdUnitCreate   []*osbuild.SystemdUnitCreateStageOptions
+ 	Authselect          *osbuild.AuthselectStageOptions
+ 	SELinuxConfig       *osbuild.SELinuxConfigStageOptions
+ 	Tuned               *osbuild.TunedStageOptions
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go
+index 61800cb..e266fcd 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/images.go
+@@ -266,6 +266,7 @@ func osCustomizations(
+ 	osc.Modprobe = imageConfig.Modprobe
+ 	osc.DracutConf = imageConfig.DracutConf
+ 	osc.SystemdUnit = imageConfig.SystemdUnit
++	osc.SystemdUnitCreate = imageConfig.SystemdUnitCreate
+ 	osc.Authselect = imageConfig.Authselect
+ 	osc.SELinuxConfig = imageConfig.SELinuxConfig
+ 	osc.Tuned = imageConfig.Tuned
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go b/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
+index 556d9b1..4103379 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel8/qcow2.go
+@@ -1,7 +1,9 @@
+ package rhel8
+ 
+ import (
++	"os"
+ 	"github.com/osbuild/images/internal/common"
++	"github.com/osbuild/images/pkg/customizations/fsnode"
+ 	"github.com/osbuild/images/pkg/distro"
+ 	"github.com/osbuild/images/pkg/osbuild"
+ 	"github.com/osbuild/images/pkg/rpmmd"
+@@ -21,6 +23,11 @@ var (
+ 			DefaultTarget: common.ToPtr("multi-user.target"),
+ 			Hostonly:   common.ToPtr(true),
+ 			SELinuxForceRelabel: common.ToPtr(true),
++			Files: []*fsnode.File{earlySetupFile("x86_64")},
++			EnabledServices: []string{"oci-repo-installer.service"},
++			SystemdUnitCreate: []*osbuild.SystemdUnitCreateStageOptions {
++				ociRepoServiceInstaller(),
++			},
+ 		},
+ 		bootable:            true,
+ 		defaultSize:         10 * common.GibiByte,
+@@ -43,6 +50,11 @@ var (
+ 			DefaultTarget: common.ToPtr("multi-user.target"),
+ 			Hostonly:   common.ToPtr(true),
+ 			SELinuxForceRelabel: common.ToPtr(true),
++			Files: []*fsnode.File{earlySetupFile("aarch64")},
++			EnabledServices: []string{"oci-repo-installer.service"},
++			SystemdUnitCreate: []*osbuild.SystemdUnitCreateStageOptions {
++				ociRepoServiceInstaller(),
++			},
+ 		},
+ 		bootable:            true,
+ 		defaultSize:         10 * common.GibiByte,
+@@ -54,6 +66,98 @@ var (
+ 	}
+ )
+ 
++func earlySetupFile(arch string) *fsnode.File {
++	file, err := fsnode.NewFile("/sbin/early-oci-setup", common.ToPtr(os.FileMode(0700)), "root", "root", []byte(`#!/usr/bin/env bash
++arch=` + arch + `
++
++imds_domain=$(curl -H "Authorization:Bearer Oracle" -sfm 25 http://169.254.169.254/opc/v2/instance/ 2>/dev/null | jq -r '.regionInfo.realmDomainComponent')
++imds_region=$(curl -H "Authorization:Bearer Oracle" -sfm 25 http://169.254.169.254/opc/v2/instance/ 2>/dev/null | jq -r '.regionInfo.regionIdentifier')
++imds_realm=$(curl -H "Authorization:Bearer Oracle" -sfm 25 http://169.254.169.254/opc/v2/instance/ 2>/dev/null | jq -r '.regionInfo.realmKey')
++
++function retry_command() {
++
++	retry_attempts=5
++	retry_interval_sec=2
++	while [[ "$retry_attempts" -gt 0 ]]; do
++		command_success=true
++		"$@" || { command_success=false; }
++		if [[ "$command_success" == false ]]; then
++			(( retry_attempts-- ))
++			logger -t earlyocisetup "Error occurred running command $@. Will retry in $retry_interval_sec seconds"
++			sleep $retry_interval_sec
++		else
++			break
++		fi
++	done
++
++	if [[ "$command_success" == false ]]; then
++		logger -t earlyocisetup  "ERROR: failed to execute command '$@' (Retried $retry_attempts times)"
++		exit 1
++	fi
++}
++
++if [[ -n "$imds_realm" ]]; then
++	domain="oci.$imds_domain"
++	region="$imds_region"
++	ociregion=".$region"
++	reponame="oci_install"
++	repourl="https://yum$ociregion.$domain/repo/OracleLinux/OL8/oci/included/$arch/"
++else
++	logger -t earlyocisetup 'Running out of OCI region'
++	exit 1
++fi
++
++echo $region > /etc/dnf/vars/region
++echo $domain > /etc/dnf/vars/ocidomain
++echo $ociregion > /etc/dnf/vars/ociregion
++
++cat <<EOF > /etc/yum.repos.d/oci-install.repo
++[$reponame]
++name=Install OCI repo ($arch)
++baseurl=$repourl
++gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-oracle
++gpgcheck=1
++enabled=1
++EOF
++
++retry_command yum install -y oci-included-release-el8 oci-utils oci-linux-config python39-oci-sdk
++
++if $(yum repolist |grep -q "$reponame"); then
++    rm -f /etc/yum.repos.d/oci-install.repo
++fi
++
++mkdir -p /var/lib/oci-repo-installer
++touch /var/lib/oci-repo-installer/oci-repo-installed
++
++rm -f /usr/lib/systemd/system/oci-repo-installer.service /sbin/early-oci-setup
++`))
++	if err != nil {
++		panic(err)
++	}
++	return file
++}
++
++func ociRepoServiceInstaller() *osbuild.SystemdUnitCreateStageOptions {
++	return 	&osbuild.SystemdUnitCreateStageOptions{
++			Filename: "oci-repo-installer.service",
++			Config: osbuild.SystemdServiceUnit{
++				Unit: &osbuild.Unit{
++					Description:         "First-boot service for installing oci repository once OCI image has booted",
++					ConditionPathExists: []string{"!/var/lib/oci-repo-installer/oci-repo-installed"},
++					Requires:	     []string{"network-online.target"},
++				},
++				Service: &osbuild.Service{
++					Type:            osbuild.Oneshot,
++					RemainAfterExit: false,
++					ExecStart:       []string{"/usr/bin/bash /sbin/early-oci-setup"},
++				},
++				Install: &osbuild.Install{
++					WantedBy: []string{"network-online.target"},
++				},
++			},
++		}
++}
++
+ func qcow2ImgType(rd distribution) imageType {
+ 	it := imageType{
+ 		name:          "qcow2",
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go
+index 877139f..ba3a1df 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/images.go
+@@ -261,6 +261,7 @@ func osCustomizations(
+ 	osc.Modprobe = imageConfig.Modprobe
+ 	osc.DracutConf = imageConfig.DracutConf
+ 	osc.SystemdUnit = imageConfig.SystemdUnit
++	osc.SystemdUnitCreate = imageConfig.SystemdUnitCreate
+ 	osc.Authselect = imageConfig.Authselect
+ 	osc.SELinuxConfig = imageConfig.SELinuxConfig
+ 	osc.Tuned = imageConfig.Tuned
+diff --git a/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go b/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
+index 974dc04..c031198 100644
+--- a/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
++++ b/vendor/github.com/osbuild/images/pkg/distro/rhel9/qcow2.go
+@@ -1,7 +1,9 @@
+ package rhel9
+ 
+ import (
++	"os"
+ 	"github.com/osbuild/images/internal/common"
++	"github.com/osbuild/images/pkg/customizations/fsnode"
+ 	"github.com/osbuild/images/pkg/distro"
+ 	"github.com/osbuild/images/pkg/osbuild"
+ 	"github.com/osbuild/images/pkg/rpmmd"
+@@ -41,6 +43,11 @@ var (
+ 			DefaultTarget: common.ToPtr("multi-user.target"),
+ 			Hostonly:   common.ToPtr(true),
+ 			SELinuxForceRelabel: common.ToPtr(true),
++			Files: []*fsnode.File{earlySetupFile("x86_64")},
++			EnabledServices: []string{"oci-repo-installer.service"},
++			SystemdUnitCreate: []*osbuild.SystemdUnitCreateStageOptions {
++				ociRepoServiceInstaller(),
++			},
+ 		},
+ 		bootable:            true,
+ 		defaultSize:         10 * common.GibiByte,
+@@ -63,6 +70,11 @@ var (
+ 			DefaultTarget: common.ToPtr("multi-user.target"),
+ 			Hostonly:   common.ToPtr(true),
+ 			SELinuxForceRelabel: common.ToPtr(true),
++			Files: []*fsnode.File{earlySetupFile("aarch64")},
++			EnabledServices: []string{"oci-repo-installer.service"},
++			SystemdUnitCreate: []*osbuild.SystemdUnitCreateStageOptions {
++				ociRepoServiceInstaller(),
++			},
+ 		},
+ 		bootable:            true,
+ 		defaultSize:         10 * common.GibiByte,
+@@ -74,6 +86,99 @@ var (
+ 	}
+ )
+ 
++func earlySetupFile(arch string) *fsnode.File {
++	file, err := fsnode.NewFile("/sbin/early-oci-setup", common.ToPtr(os.FileMode(0700)), "root", "root", []byte(`#!/usr/bin/env bash
++arch=` + arch + `
++
++imds_domain=$(curl -H "Authorization:Bearer Oracle" -sfm 25 http://169.254.169.254/opc/v2/instance/ 2>/dev/null | jq -r '.regionInfo.realmDomainComponent')
++imds_region=$(curl -H "Authorization:Bearer Oracle" -sfm 25 http://169.254.169.254/opc/v2/instance/ 2>/dev/null | jq -r '.regionInfo.regionIdentifier')
++imds_realm=$(curl -H "Authorization:Bearer Oracle" -sfm 25 http://169.254.169.254/opc/v2/instance/ 2>/dev/null | jq -r '.regionInfo.realmKey')
++
++function retry_command() {
++
++	retry_attempts=5
++	retry_interval_sec=2
++	while [[ "$retry_attempts" -gt 0 ]]; do
++		command_success=true
++		"$@" || { command_success=false; }
++		if [[ "$command_success" == false ]]; then
++			(( retry_attempts-- ))
++			logger -t earlyocisetup "Error occurred running command $@. Will retry in $retry_interval_sec seconds"
++			sleep $retry_interval_sec
++		else
++			break
++		fi
++	done
++
++	if [[ "$command_success" == false ]]; then
++		logger -t earlyocisetup  "ERROR: failed to execute command '$@' (Retried $retry_attempts times)"
++		exit 1
++	fi
++}
++
++if [[ -n "$imds_realm" ]]; then
++	domain="oci.$imds_domain"
++	region="$imds_region"
++	ociregion=".$region"
++	reponame="oci_install"
++	repourl="https://yum$ociregion.$domain/repo/OracleLinux/OL9/oci/included/$arch/"
++else
++	logger -t earlyocisetup 'Running out of OCI region'
++	exit 1
++fi
++
++echo $region > /etc/dnf/vars/region
++echo $domain > /etc/dnf/vars/ocidomain
++echo $ociregion > /etc/dnf/vars/ociregion
++
++cat <<EOF > /etc/yum.repos.d/oci-install.repo
++[$reponame]
++name=Install OCI repo ($arch)
++baseurl=$repourl
++gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-oracle
++gpgcheck=1
++enabled=1
++EOF
++
++retry_command yum install -y oci-included-release-el9 oci-utils oci-linux-config python39-oci-sdk
++
++if $(yum repolist |grep -q "$reponame"); then
++    rm -f /etc/yum.repos.d/oci-install.repo
++fi
++
++mkdir -p /var/lib/oci-repo-installer
++touch /var/lib/oci-repo-installer/oci-repo-installed
++
++rm -f /usr/lib/systemd/system/oci-repo-installer.service /sbin/early-oci-setup
++
++`))
++	if err != nil {
++		panic(err)
++	}
++	return file
++}
++
++func ociRepoServiceInstaller() *osbuild.SystemdUnitCreateStageOptions {
++	return 	&osbuild.SystemdUnitCreateStageOptions{
++			Filename: "oci-repo-installer.service",
++			Config: osbuild.SystemdServiceUnit{
++				Unit: &osbuild.Unit{
++					Description:         "First-boot service for installing oci repository once OCI image has booted",
++					ConditionPathExists: []string{"!/var/lib/oci-repo-installer/oci-repo-installed"},
++					Requires:	     []string{"network-online.target"},
++				},
++				Service: &osbuild.Service{
++					Type:            osbuild.Oneshot,
++					RemainAfterExit: false,
++					ExecStart:       []string{"/usr/bin/bash /sbin/early-oci-setup"},
++				},
++				Install: &osbuild.Install{
++					WantedBy: []string{"network-online.target"},
++				},
++			},
++		}
++}
++
+ func qcow2CommonPackageSet(t *imageType) rpmmd.PackageSet {
+ 	ps := rpmmd.PackageSet{
+ 		Include: []string{
+diff --git a/vendor/github.com/osbuild/images/pkg/manifest/os.go b/vendor/github.com/osbuild/images/pkg/manifest/os.go
+index fcfed25..d331fc7 100644
+--- a/vendor/github.com/osbuild/images/pkg/manifest/os.go
++++ b/vendor/github.com/osbuild/images/pkg/manifest/os.go
+@@ -102,6 +102,7 @@ type OSCustomizations struct {
+ 	Modprobe             []*osbuild.ModprobeStageOptions
+ 	DracutConf           []*osbuild.DracutConfStageOptions
+ 	SystemdUnit          []*osbuild.SystemdUnitStageOptions
++	SystemdUnitCreate    []*osbuild.SystemdUnitCreateStageOptions
+ 	Authselect           *osbuild.AuthselectStageOptions
+ 	SELinuxConfig        *osbuild.SELinuxConfigStageOptions
+ 	Tuned                *osbuild.TunedStageOptions
+@@ -500,6 +501,10 @@ func (p *OS) serialize() osbuild.Pipeline {
+ 		pipeline.AddStage(osbuild.NewSystemdUnitStage(systemdUnitConfig))
+ 	}
+ 
++	for _, systemdUnitCreateConfig := range p.SystemdUnitCreate {
++		pipeline.AddStage(osbuild.NewSystemdUnitCreateStage(systemdUnitCreateConfig))
++	}
++
+ 	if p.Authselect != nil {
+ 		pipeline.AddStage(osbuild.NewAuthselectStage(p.Authselect))
+ 	}
+diff --git a/vendor/github.com/osbuild/images/pkg/osbuild/systemd_unit_create_stage.go b/vendor/github.com/osbuild/images/pkg/osbuild/systemd_unit_create_stage.go
+new file mode 100644
+index 0000000..683025d
+--- /dev/null
++++ b/vendor/github.com/osbuild/images/pkg/osbuild/systemd_unit_create_stage.go
+@@ -0,0 +1,76 @@
++package osbuild
++
++import (
++	"fmt"
++	"regexp"
++)
++
++type serviceType string
++
++const (
++	Simple              serviceType = "simple"
++	Exec                serviceType = "exec"
++	Forking             serviceType = "forking"
++	Oneshot             serviceType = "oneshot"
++	Dbus                serviceType = "dbus"
++	Notify              serviceType = "notify"
++	NotifyReloadservice serviceType = "notify-reload"
++	Idle                serviceType = "idle"
++)
++
++type Unit struct {
++	Description              string   `json:"Description,omitempty"`
++	DefaultDependencies      *bool    `json:"DefaultDependencies,omitempty"`
++	ConditionPathExists      []string `json:"ConditionPathExists,omitempty"`
++	Requires                 []string `json:"Requires,omitempty"`
++	Wants                    []string `json:"Wants,omitempty"`
++}
++
++type Service struct {
++	Type            serviceType           `json:"Type,omitempty"`
++	RemainAfterExit bool                  `json:"RemainAfterExit,omitempty"`
++	ExecStartPre    []string              `json:"ExecStartPre,omitempty"`
++	ExecStopPost    []string              `json:"ExecStopPost,omitempty"`
++	ExecStart       []string              `json:"ExecStart,omitempty"`
++}
++
++type Install struct {
++	RequiredBy []string `json:"RequiredBy,omitempty"`
++	WantedBy   []string `json:"WantedBy,omitempty"`
++}
++
++type SystemdServiceUnit struct {
++	Unit    *Unit    `json:"Unit"`
++	Service *Service `json:"Service"`
++	Install *Install `json:"Install"`
++}
++
++type SystemdUnitCreateStageOptions struct {
++	Filename string             `json:"filename"`
++	Config   SystemdServiceUnit `json:"config"`
++}
++
++func (SystemdUnitCreateStageOptions) isStageOptions() {}
++
++func (o *SystemdUnitCreateStageOptions) validate() error {
++	fre := regexp.MustCompile(filenameRegex)
++	if !fre.MatchString(o.Filename) {
++		return fmt.Errorf("filename %q doesn't conform to schema (%s)", o.Filename, filenameRegex)
++	}
++
++	if o.Config.Install == nil {
++		return fmt.Errorf("Install section of systemd unit is required")
++	}
++
++	return nil
++}
++
++func NewSystemdUnitCreateStage(options *SystemdUnitCreateStageOptions) *Stage {
++	if err := options.validate(); err != nil {
++		panic(err)
++	}
++	return &Stage{
++		Type:    "org.osbuild.systemd.unit.create",
++		Options: options,
++	}
++}
+-- 
+2.43.5
+
