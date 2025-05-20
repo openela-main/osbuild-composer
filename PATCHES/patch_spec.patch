@@ -1,8 +1,18 @@
+From 9ef631333063d360fb7b965bd74c542008ac0094 Mon Sep 17 00:00:00 2001
+From: Alex Burmashev <alexander.burmashev@oracle.com>
+Date: Tue, 20 May 2025 12:47:13 +0000
+Subject: [PATCH] OpenELA 9.6 debranding
+
+Signed-off-by: Alex Burmashev <alexander.burmashev@oracle.com>
+---
+ SPECS/osbuild-composer.spec | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
 diff --git a/SPECS/osbuild-composer.spec b/SPECS/osbuild-composer.spec
-index 9318da0..82a5456 100644
+index 147c66b..6ecc735 100644
 --- a/SPECS/osbuild-composer.spec
 +++ b/SPECS/osbuild-composer.spec
-@@ -169,6 +169,14 @@ install -m 0644 -vp repositories/rhel-%{rhel}*                     %{buildroot}%
+@@ -197,6 +197,14 @@ done
  %endif
  %endif
  
@@ -17,3 +27,6 @@ index 9318da0..82a5456 100644
  # Fedora can build for all included fedora releases
  %if 0%{?fedora}
  install -m 0644 -vp repositories/fedora-*                          %{buildroot}%{_datadir}/osbuild-composer/repositories/
+-- 
+2.47.1
+
