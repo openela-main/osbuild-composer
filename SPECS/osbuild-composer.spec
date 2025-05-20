@@ -7,9 +7,12 @@
 # This is used internally during nightly pipeline testing!
 %bcond_with relax_requires
 
+# The minimum required osbuild version
+%global min_osbuild_version 139
+
 %global goipath         github.com/osbuild/osbuild-composer
 
-Version:              76
+Version:              132.2
 
 %gometa
 
@@ -22,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:                 osbuild-composer
-Release:              2%{?dist}.2.openela.0.2
+Release:              1%{?dist}.openela.0.2
 Summary:              An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -33,22 +36,8 @@ License:              Apache-2.0
 URL:                  %{gourl}
 Source0:              %{gosource}
 
-# Patches were generated from the upstream 'rhel-9.2.0' branch:
-# git clone https://github.com/osbuild/osbuild-composer.git
-# cd osbuild-composer/
-# git checkout rhel-9.2.0
-# git format-patch HEAD...v76
-#
-# https://github.com/osbuild/osbuild-composer/pull/3349
-Patch0:               0001-tests-ostree-Change-centos-8-BOOT_LOCATION-to-a-work.patch
-Patch1:               0002-distro-rhel-add-payload-repos-to-os-package-set.patch
-# https://github.com/osbuild/osbuild-composer/pull/3348
-Patch2:               0003-Manifest-always-set-kernel-options-in-grub2-stage.patch
-# https://github.com/osbuild/osbuild-composer/pull/3410
-Patch3:               0004-simplified-installer-enable-isolinux.patch
-# https://github.com/osbuild/osbuild-composer/pull/3411
-Patch4:               0005-Save-manifest-lists-when-pulling-containers-Set-container-local-names-explicitly.patch
-Patch5:               0001-Add-OpenELA-8-and-9-Support.patch
+Patch1:               0001-Add-OpenELA-8-and-9-Support.patch
+
 
 BuildRequires:        %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
 BuildRequires:        systemd
@@ -58,9 +47,13 @@ BuildRequires:        make
 # Build requirements of 'theproglottis/gpgme' package
 BuildRequires:        gpgme-devel
 BuildRequires:        libassuan-devel
+# Build requirements of 'github.com/containers/storage' package
+BuildRequires:        device-mapper-devel
 %if 0%{?fedora}
 BuildRequires:        systemd-rpm-macros
 BuildRequires:        git
+# Build requirements of 'github.com/containers/storage' package
+BuildRequires:        btrfs-progs-devel
 # DO NOT REMOVE the BUNDLE_START and BUNDLE_END markers as they are used by 'tools/rpm_spec_add_provides_bundle.sh' to generate the Provides: bundled list
 # BUNDLE_START
 # BUNDLE_END
@@ -95,6 +88,15 @@ export GOPATH=$GO_BUILD_PATH:%{gopath}
 export GOFLAGS+=" -mod=vendor"
 %endif
 
+# Fedora and RHEL versions disable Go modules by default, but we want to use them.
+# Unconditionally undefine the macro which disables it to use the default behavior.
+%undefine gomodulesmode
+
+# btrfs-progs-devel is not available on RHEL
+%if 0%{?rhel}
+GOTAGS="exclude_graphdriver_btrfs"
+%endif
+
 # Set the commit hash so that composer can report what source version
 # was used to build it. This has to be set explicitly when calling rpmbuild,
 # this script will not attempt to automatically discover it.
@@ -103,8 +105,11 @@ export LDFLAGS="${LDFLAGS} -X 'github.com/osbuild/osbuild-composer/internal/comm
 %endif
 export LDFLAGS="${LDFLAGS} -X 'github.com/osbuild/osbuild-composer/internal/common.RpmVersion=%{name}-%{?epoch:%epoch:}%{version}-%{release}.%{_arch}'"
 
-%gobuild -o _bin/osbuild-composer %{goipath}/cmd/osbuild-composer
-%gobuild -o _bin/osbuild-worker %{goipath}/cmd/osbuild-worker
+%gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-composer %{goipath}/cmd/osbuild-composer
+%gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-worker %{goipath}/cmd/osbuild-worker
+%gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-worker-executor %{goipath}/cmd/osbuild-worker-executor
+%gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-jobsite-manager %{goipath}/cmd/osbuild-jobsite-manager
+%gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-jobsite-builder %{goipath}/cmd/osbuild-jobsite-builder
 
 make man
 
@@ -123,16 +128,19 @@ export GOPATH=%{gobuilddir}:%{gopath}
 
 TEST_LDFLAGS="${LDFLAGS:-} -B 0x$(od -N 20 -An -tx1 -w100 /dev/urandom | tr -d ' ')"
 
-go test -c -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-composer-cli-tests %{goipath}/cmd/osbuild-composer-cli-tests
-go test -c -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-dnf-json-tests %{goipath}/cmd/osbuild-dnf-json-tests
-go test -c -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-weldr-tests %{goipath}/internal/client/
-go test -c -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-image-tests %{goipath}/cmd/osbuild-image-tests
-go test -c -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-auth-tests %{goipath}/cmd/osbuild-auth-tests
-go test -c -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-koji-tests %{goipath}/cmd/osbuild-koji-tests
-go test -c -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-composer-dbjobqueue-tests %{goipath}/cmd/osbuild-composer-dbjobqueue-tests
-go test -c -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-composer-manifest-tests %{goipath}/cmd/osbuild-composer-manifest-tests
-go test -c -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-service-maintenance-tests %{goipath}/cmd/osbuild-service-maintenance
-go build -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-mock-openid-provider %{goipath}/cmd/osbuild-mock-openid-provider
+%if 0%{?rhel}
+GOTAGS="${GOTAGS:+$GOTAGS,}rhel%{rhel}"
+%endif
+
+go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-composer-cli-tests %{goipath}/cmd/osbuild-composer-cli-tests
+go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-dnf-json-tests %{goipath}/cmd/osbuild-dnf-json-tests
+go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-weldr-tests %{goipath}/internal/client/
+go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-image-tests %{goipath}/cmd/osbuild-image-tests
+go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-auth-tests %{goipath}/cmd/osbuild-auth-tests
+go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-koji-tests %{goipath}/cmd/osbuild-koji-tests
+go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-composer-dbjobqueue-tests %{goipath}/cmd/osbuild-composer-dbjobqueue-tests
+go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-service-maintenance-tests %{goipath}/cmd/osbuild-service-maintenance
+go build -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-mock-openid-provider %{goipath}/cmd/osbuild-mock-openid-provider
 
 %endif
 
@@ -140,31 +148,52 @@ go build -tags=integration -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-mock-openi
 install -m 0755 -vd                                                %{buildroot}%{_libexecdir}/osbuild-composer
 install -m 0755 -vp _bin/osbuild-composer                          %{buildroot}%{_libexecdir}/osbuild-composer/
 install -m 0755 -vp _bin/osbuild-worker                            %{buildroot}%{_libexecdir}/osbuild-composer/
-install -m 0755 -vp dnf-json                                       %{buildroot}%{_libexecdir}/osbuild-composer/
+install -m 0755 -vp _bin/osbuild-worker-executor                   %{buildroot}%{_libexecdir}/osbuild-composer/
+install -m 0755 -vp _bin/osbuild-jobsite-manager                   %{buildroot}%{_libexecdir}/osbuild-composer/
+install -m 0755 -vp _bin/osbuild-jobsite-builder                   %{buildroot}%{_libexecdir}/osbuild-composer/
 
 # Only include repositories for the distribution and release
 install -m 0755 -vd                                                %{buildroot}%{_datadir}/osbuild-composer/repositories
+
 # CentOS also defines rhel so we check for centos first
 %if 0%{?centos}
 
-# CentOS 9 supports building for CentOS 8 and later
-%if 0%{?centos} >= 9
+# Latest CentOS supports building all CentOS versions
+%if 0%{?centos} >= 10
 install -m 0644 -vp repositories/centos-*                          %{buildroot}%{_datadir}/osbuild-composer/repositories/
+
 %else
-# CentOS 8 only supports building for CentOS 8
+# All other CentOS versions support building for the same version
 install -m 0644 -vp repositories/centos-%{centos}*                 %{buildroot}%{_datadir}/osbuild-composer/repositories/
 install -m 0644 -vp repositories/centos-stream-%{centos}*          %{buildroot}%{_datadir}/osbuild-composer/repositories/
-
 %endif
-%else
-%if 0%{?rhel}
-# RHEL 9 supports building for RHEL 8 and later
-%if 0%{?rhel} >= 9
-install -m 0644 -vp repositories/rhel-*                            %{buildroot}%{_datadir}/osbuild-composer/repositories/
 
 %else
-# RHEL 8 only supports building for 8
-install -m 0644 -vp repositories/rhel-%{rhel}*                     %{buildroot}%{_datadir}/osbuild-composer/repositories/
+
+%if 0%{?rhel}
+# RHEL 10 supports building all RHEL versions
+%if 0%{?rhel} >= 10
+for REPO_FILE in $(ls repositories/rhel-* | grep -v 'no-aux-key'); do
+    install -m 0644 -vp ${REPO_FILE}                               %{buildroot}%{_datadir}/osbuild-composer/repositories/$(basename ${REPO_FILE})
+done
+
+# RHEL-8 auxiliary key is signed using SHA-1, which is not enabled by default on RHEL-10 and later
+for REPO_FILE in $(ls repositories/rhel-8*-no-aux-key.json); do
+    install -m 0644 -vp ${REPO_FILE}                               %{buildroot}%{_datadir}/osbuild-composer/repositories/$(basename ${REPO_FILE} | sed 's/-no-aux-key//g')
+done
+
+%else
+# All other RHEL versions support building for the same version
+for REPO_FILE in $(ls repositories/rhel-%{rhel}* | grep -v 'no-aux-key'); do
+    install -m 0644 -vp ${REPO_FILE}                               %{buildroot}%{_datadir}/osbuild-composer/repositories/$(basename ${REPO_FILE})
+done
+
+# RHEL 9 supports building also for RHEL 8
+%if 0%{?rhel} == 9
+for REPO_FILE in $(ls repositories/rhel-8* | grep -v 'no-aux-key'); do
+    install -m 0644 -vp ${REPO_FILE}                               %{buildroot}%{_datadir}/osbuild-composer/repositories/$(basename ${REPO_FILE})
+done
+%endif
 
 %endif
 %endif
@@ -204,14 +233,12 @@ install -m 0755 -vp _bin/osbuild-image-tests                       %{buildroot}%
 install -m 0755 -vp _bin/osbuild-auth-tests                        %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-koji-tests                        %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-composer-dbjobqueue-tests         %{buildroot}%{_libexecdir}/osbuild-composer-test/
-install -m 0755 -vp _bin/osbuild-composer-manifest-tests           %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-service-maintenance-tests         %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-mock-openid-provider              %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp tools/define-compose-url.sh                    %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp tools/provision.sh                             %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp tools/gen-certs.sh                             %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp tools/gen-ssh.sh                               %{buildroot}%{_libexecdir}/osbuild-composer-test/
-install -m 0755 -vp tools/image-info                               %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp tools/run-koji-container.sh                    %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp tools/koji-compose.py                          %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp tools/libvirt_test.sh                          %{buildroot}%{_libexecdir}/osbuild-composer-test/
@@ -220,7 +247,6 @@ install -m 0755 -vp tools/generic_s3_test.sh                       %{buildroot}%
 install -m 0755 -vp tools/generic_s3_https_test.sh                 %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp tools/run-mock-auth-servers.sh                 %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp tools/set-env-variables.sh                     %{buildroot}%{_libexecdir}/osbuild-composer-test/
-install -m 0755 -vp tools/test-case-generators/generate-test-cases %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vd                                                %{buildroot}%{_libexecdir}/tests/osbuild-composer
 install -m 0755 -vp test/cases/*.sh                                %{buildroot}%{_libexecdir}/tests/osbuild-composer/
 
@@ -267,15 +293,15 @@ install -m 0644 -vp test/data/x509/*                               %{buildroot}%
 install -m 0755 -vd                                                %{buildroot}%{_datadir}/tests/osbuild-composer/schemas
 install -m 0644 -vp pkg/jobqueue/dbjobqueue/schemas/*              %{buildroot}%{_datadir}/tests/osbuild-composer/schemas/
 
-install -m 0755 -vd                                               %{buildroot}%{_datadir}/tests/osbuild-composer/upgrade8to9
-install -m 0644 -vp test/data/upgrade8to9/*                       %{buildroot}%{_datadir}/tests/osbuild-composer/upgrade8to9/
+install -m 0755 -vd                                                %{buildroot}%{_datadir}/tests/osbuild-composer/rhel-upgrade
+install -m 0644 -vp test/data/rhel-upgrade/*                       %{buildroot}%{_datadir}/tests/osbuild-composer/rhel-upgrade/
 
 %endif
 
 %check
 export GOFLAGS="-buildmode=pie"
 %if 0%{?rhel}
-export GOFLAGS+=" -mod=vendor"
+export GOFLAGS+=" -mod=vendor -tags=exclude_graphdriver_btrfs"
 export GOPATH=$PWD/_build:%{gopath}
 # cd inside GOPATH, otherwise go with GO111MODULE=off ignores vendor directory
 cd $PWD/_build/src/%{goipath}
@@ -285,13 +311,13 @@ cd $PWD/_build/src/%{goipath}
 %endif
 
 %post
-%systemd_post osbuild-composer.service osbuild-composer.socket osbuild-composer-api.socket osbuild-remote-worker.socket
+%systemd_post osbuild-composer.service osbuild-composer.socket osbuild-composer-api.socket osbuild-composer-prometheus.socket osbuild-remote-worker.socket
 
 %preun
-%systemd_preun osbuild-composer.service osbuild-composer.socket osbuild-composer-api.socket osbuild-remote-worker.socket
+%systemd_preun osbuild-composer.service osbuild-composer.socket osbuild-composer-api.socket osbuild-composer-prometheus.socket osbuild-remote-worker.socket
 
 %postun
-%systemd_postun_with_restart osbuild-composer.service osbuild-composer.socket osbuild-composer-api.socket osbuild-remote-worker.socket
+%systemd_postun_with_restart osbuild-composer.service osbuild-composer.socket osbuild-composer-api.socket osbuild-composer-prometheus.socket osbuild-remote-worker.socket
 
 %files
 %license LICENSE
@@ -300,13 +326,19 @@ cd $PWD/_build/src/%{goipath}
 %{_unitdir}/osbuild-composer.service
 %{_unitdir}/osbuild-composer.socket
 %{_unitdir}/osbuild-composer-api.socket
+%{_unitdir}/osbuild-composer-prometheus.socket
 %{_unitdir}/osbuild-local-worker.socket
 %{_unitdir}/osbuild-remote-worker.socket
 %{_sysusersdir}/osbuild-composer.conf
 
 %package core
 Summary:              The core osbuild-composer binary
-Requires:             %{name}-dnf-json = %{version}-%{release}
+Requires:             osbuild-depsolve-dnf >= %{min_osbuild_version}
+# This version needs to get bumped everytime the osbuild-depsolve-dnf json
+# API changes in incompatible ways
+Requires:             osbuild-dnf-json-api = 8
+Provides:             %{name}-dnf-json = %{version}-%{release}
+Obsoletes:            %{name}-dnf-json < %{version}-%{release}
 
 %description core
 The core osbuild-composer binary. This is suitable both for spawning in containers and by systemd.
@@ -319,17 +351,22 @@ The core osbuild-composer binary. This is suitable both for spawning in containe
 Summary:              The worker for osbuild-composer
 Requires:             systemd
 Requires:             qemu-img
-Requires:             osbuild >= 81-1.el9_2.1
-Requires:             osbuild-ostree >= 81-1.el9_2.1
-Requires:             osbuild-lvm2 >= 81-1.el9_2.1
-Requires:             osbuild-luks2 >= 81-1.el9_2.1
-Requires:             %{name}-dnf-json = %{version}-%{release}
+Requires:             osbuild >= %{min_osbuild_version}
+Requires:             osbuild-ostree >= %{min_osbuild_version}
+Requires:             osbuild-lvm2 >= %{min_osbuild_version}
+Requires:             osbuild-luks2 >= %{min_osbuild_version}
+Requires:             osbuild-depsolve-dnf >= %{min_osbuild_version}
+Provides:             %{name}-dnf-json = %{version}-%{release}
+Obsoletes:            %{name}-dnf-json < %{version}-%{release}
 
 %description worker
 The worker for osbuild-composer
 
 %files worker
 %{_libexecdir}/osbuild-composer/osbuild-worker
+%{_libexecdir}/osbuild-composer/osbuild-worker-executor
+%{_libexecdir}/osbuild-composer/osbuild-jobsite-manager
+%{_libexecdir}/osbuild-composer/osbuild-jobsite-builder
 %{_unitdir}/osbuild-worker@.service
 %{_unitdir}/osbuild-remote-worker@.service
 
@@ -350,25 +387,6 @@ fi
 %postun worker
 # restart all the worker services
 %systemd_postun_with_restart "osbuild-worker@*.service" "osbuild-remote-worker@*.service"
-
-%package dnf-json
-Summary:              The dnf-json binary used by osbuild-composer and the workers
-
-# Conflicts with older versions of composer that provide the same files
-# this can be removed when RHEL 8 reaches EOL
-Conflicts:            osbuild-composer <= 35
-
-%description dnf-json
-The dnf-json binary used by osbuild-composer and the workers.
-
-%files dnf-json
-%{_libexecdir}/osbuild-composer/dnf-json
-
-%post dnf-json
-# Fix ownership of the rpmmd cache files from previous versions where it was owned by root:root
-if [ -e /var/cache/osbuild-composer/rpmmd ]; then
-    chown -f -R --from root:root _osbuild-composer:_osbuild-composer /var/cache/osbuild-composer/rpmmd
-fi
 
 %if %{with tests} || 0%{?rhel}
 
@@ -414,7 +432,11 @@ Requires:             httpd
 Requires:             mod_ssl
 Requires:             openssl
 Requires:             firewalld
+# podman-plugins has been deprecated since podman version 5.0.0,
+# which is in Fedora 40+ and in c10s / el10
+%if (0%{?rhel} && 0%{?rhel} < 10) || (0%{?fedora} && 0%{?fedora} < 40)
 Requires:             podman-plugins
+%endif
 Requires:             dnf-plugins-core
 Requires:             skopeo
 Requires:             make
@@ -441,19 +463,138 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
-* Thu Jan 25 2024 Release Engineering <releng@openela.org> - 76.openela.0.2
+* Tue May 20 2025 Release Engineering <releng@openela.org> - 132.2.openela.0.2
 - Add OpenELA 8 support and host detection
 - Add OpenELA 9 support and host detection
 
-* Tue Apr 25 2023 Achilleas Koutsou <achilleas@redhat.com> - 76-2.2
-- Save manifest lists when pulling containers & Set container local names explicitly (rhbz#2189400)
+* Tue Apr 22 2025 Tomáš Hozza <thozza@redhat.com> = 132.2-1
+- Resolve RHEL-84642
 
-* Tue Apr 25 2023 Tomáš Hozza <thozza@redhat.com> - 76-2.1
-- simplified-installer: enable isolinux (rhbz#2178130)
+* Thu Apr 03 2025 Tomáš Hozza <thozza@redhat.com> = 132.1-1
+- Resolve RHEL-83781
 
-* Mon Mar 27 2023 Tomáš Hozza <thozza@redhat.com> - 76-2
-- distro/rhel: add payload repos to os package set (rhbz#2177699)
-- Manifest: always set kernel options in grub2 stage (rhbz#2162299)
+* Thu Feb 13 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 132-1
+- New upstream release
+
+* Wed Feb 05 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 131-1
+- New upstream release
+
+* Wed Jan 08 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 128-1
+- New upstream release
+
+* Wed Dec 11 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 127-1
+- New upstream release
+
+* Wed Nov 27 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 126-1
+- New upstream release
+
+* Thu Nov 14 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 125-1
+- New upstream release
+
+* Fri Nov 01 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 124-1
+- New upstream release
+
+* Wed Oct 16 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 123-1
+- New upstream release
+
+* Wed Oct 02 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 122-1
+- New upstream release
+
+* Mon Sep 30 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 121-1
+- New upstream release
+
+* Fri Aug 23 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 118-1
+- New upstream release
+
+* Wed Aug 21 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 117-1
+- New upstream release
+
+* Thu Aug 15 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 116-1
+- New upstream release
+
+* Wed Aug 07 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 115-1
+- New upstream release
+
+* Wed Jul 24 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 114-1
+- New upstream release
+
+* Fri Jul 12 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 113-1
+- New upstream release
+
+* Wed Jun 12 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 110-1
+- New upstream release
+
+* Tue Jun 04 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 109-1
+- New upstream release
+
+* Fri May 17 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 108-1
+- New upstream release
+
+* Wed Apr 03 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 104-1
+- New upstream release
+
+* Wed Mar 06 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 102-1
+- New upstream release
+
+* Mon Feb 26 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 101-1
+- New upstream release
+
+* Wed Feb 07 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 100-1
+- New upstream release
+
+* Wed Jan 24 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 99-1
+- New upstream release
+
+* Wed Jan 10 2024 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 98-1
+- New upstream release
+
+* Wed Dec 13 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 96-1
+- New upstream release
+
+* Wed Nov 29 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 95-1
+- New upstream release
+
+* Wed Nov 15 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 94-1
+- New upstream release
+
+* Wed Nov 01 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 93-1
+- New upstream release
+
+* Wed Oct 18 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 92-1
+- New upstream release
+
+* Wed Oct 04 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 91-1
+- New upstream release
+
+* Wed Sep 06 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 89-1
+- New upstream release
+
+* Thu Aug 24 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 88-1
+- New upstream release
+
+* Wed Aug 09 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 87-1
+- New upstream release
+
+* Wed Jul 26 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 86-1
+- New upstream release
+
+* Fri Jul 14 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 85-1
+- New upstream release
+
+* Wed Jun 14 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 84-1
+- New upstream release
+
+* Wed May 17 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 82-1
+- New upstream release
+
+* Wed Apr 19 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 80-1
+- New upstream release
+
+* Wed Apr 05 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 79-1
+- New upstream release
+
+* Wed Mar 08 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 77-1
+- New upstream release
 
 * Wed Mar 01 2023 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 76-1
 - New upstream release
