@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:                 osbuild-composer
-Release:              3%{?dist}.openela.0.2
+Release:              4%{?dist}.openela.0.2
 Summary:              An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -432,9 +432,12 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
-* Tue May 20 2025 Release Engineering <releng@openela.org> - 101.openela.0.2
+* Thu Jun 26 2025 Release Engineering <releng@openela.org> - 101.openela.0.2
 - Add OpenELA 8 support and host detection
 - Add OpenELA 9 support and host detection
+
+* Tue Jun 24 2025 Ondřej Budai <obudai@redhat.com> - 101-4
+- Resolves: RHEL-89279 (CVE-2025-22871)
 
 * Tue Apr 22 2025 Tomáš Hozza <thozza@redhat.com> - 101-3
 - Resolve RHEL-84643 (CVE-2025-30204)
