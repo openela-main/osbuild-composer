@@ -1,0 +1,54 @@
+From 514f82421bb2444fc73efca5898389329fd1e38d Mon Sep 17 00:00:00 2001
+From: Gianluca Zuccarelli <gianlucazuccarelli@gmail.com>
+Date: Mon, 8 Sep 2025 14:11:50 +0100
+Subject: [PATCH] internal/blueprint: add JSON tailoring to bp conversion
+
+The blueprint convert function was missing the json tailoring case. This meant that
+if the json tailoring customization was provided in the blueprint, the customization
+would get ignored and the tailoring profile would not be applied to the image.
+---
+ internal/blueprint/blueprint.go              | 4 ++++
+ internal/blueprint/blueprint_convert_test.go | 8 ++++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/internal/blueprint/blueprint.go b/internal/blueprint/blueprint.go
+index 63f8aa5b71..c01a2c6a48 100644
+--- a/internal/blueprint/blueprint.go
++++ b/internal/blueprint/blueprint.go
+@@ -253,6 +253,10 @@ func Convert(bp Blueprint) iblueprint.Blueprint {
+ 				itailoring := iblueprint.OpenSCAPTailoringCustomizations(*tailoring)
+ 				ioscap.Tailoring = &itailoring
+ 			}
++			if jsonTailoring := oscap.JSONTailoring; jsonTailoring != nil {
++				ijsonTailoring := iblueprint.OpenSCAPJSONTailoringCustomizations(*jsonTailoring)
++				ioscap.JSONTailoring = &ijsonTailoring
++			}
+ 			customizations.OpenSCAP = &ioscap
+ 		}
+ 		if ign := c.Ignition; ign != nil {
+diff --git a/internal/blueprint/blueprint_convert_test.go b/internal/blueprint/blueprint_convert_test.go
+index 520e18271d..2c652f0658 100644
+--- a/internal/blueprint/blueprint_convert_test.go
++++ b/internal/blueprint/blueprint_convert_test.go
+@@ -233,6 +233,10 @@ func TestConvert(t *testing.T) {
+ 							Selected:   []string{"cloth"},
+ 							Unselected: []string{"leather"},
+ 						},
++						JSONTailoring: &OpenSCAPJSONTailoringCustomizations{
++							ProfileID: "tailored_profile",
++							Filepath:  "path-to-json-file",
++						},
+ 					},
+ 					Ignition: &IgnitionCustomization{
+ 						Embedded: &EmbeddedIgnitionCustomization{
+@@ -532,6 +536,10 @@ func TestConvert(t *testing.T) {
+ 							Selected:   []string{"cloth"},
+ 							Unselected: []string{"leather"},
+ 						},
++						JSONTailoring: &iblueprint.OpenSCAPJSONTailoringCustomizations{
++							ProfileID: "tailored_profile",
++							Filepath:  "path-to-json-file",
++						},
+ 					},
+ 					Ignition: &iblueprint.IgnitionCustomization{
+ 						Embedded: &iblueprint.EmbeddedIgnitionCustomization{

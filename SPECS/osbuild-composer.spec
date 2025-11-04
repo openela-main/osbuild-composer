@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:           osbuild-composer
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -36,6 +36,14 @@ License:        Apache-2.0
 URL:            %{gourl}
 Source0:        %{gosource}
 
+# https://github.com/osbuild/osbuild-composer/pull/4857
+Patch0: json-tailoring-conversion.patch
+
+# https://github.com/osbuild/osbuild-composer/pull/4867
+Patch1: fix-unclosed-logrus-logging-pipes.patch
+
+# https://github.com/osbuild/osbuild-composer/pull/4841
+Patch2: update-go-jose-dependency.patch
 
 BuildRequires:  %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
 BuildRequires:  systemd
@@ -454,6 +462,14 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
+* Wed Oct 15 2025 Gianluca Zuccarelli <gzuccare@redhat.com> - 134.1-3
+- Fix json tailoring blueprint conversion
+  Resolves: RHEL-115392
+- Fix unclosed logrus logging pipes
+  Resolves: RHEL-121533
+- Update go-jose dependency
+  Resolves: RHEL-82957 (CVE-2025-27144)
+
 * Tue Jun 24 2025 Ondřej Budai <obudai@redhat.com> - 134.1-2
 - Resolves: RHEL-89221 (CVE-2025-22871)
 
