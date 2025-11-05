@@ -1,0 +1,179 @@
+From 8e6381e3cfdebe5107949173a0994e7b8557a718 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ond=C5=99ej=20Budai?= <ondrej@budai.cz>
+Date: Tue, 26 Aug 2025 13:41:10 +0200
+Subject: [PATCH 1/2] go.mod: update go-jose v4.0.5 to fix CVE-2025-27144
+
+---
+ go.mod                                               |  2 +-
+ go.sum                                               |  4 ++--
+ vendor/github.com/go-jose/go-jose/v4/CONTRIBUTING.md |  6 ------
+ vendor/github.com/go-jose/go-jose/v4/README.md       | 10 +---------
+ vendor/github.com/go-jose/go-jose/v4/jwe.go          |  5 +++--
+ vendor/github.com/go-jose/go-jose/v4/jwk.go          |  4 ++--
+ vendor/github.com/go-jose/go-jose/v4/jws.go          |  5 +++--
+ vendor/modules.txt                                   |  2 +-
+ 8 files changed, 13 insertions(+), 25 deletions(-)
+
+diff --git a/go.mod b/go.mod
+index 43cd13d2ae..b26e5dcbd4 100644
+--- a/go.mod
++++ b/go.mod
+@@ -133,7 +133,7 @@ require (
+ 	github.com/envoyproxy/protoc-gen-validate v1.1.0 // indirect
+ 	github.com/felixge/httpsnoop v1.0.4 // indirect
+ 	github.com/ghodss/yaml v1.0.0 // indirect
+-	github.com/go-jose/go-jose/v4 v4.0.4 // indirect
++	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
+ 	github.com/go-logr/logr v1.4.2 // indirect
+ 	github.com/go-logr/stdr v1.2.2 // indirect
+ 	github.com/go-openapi/analysis v0.23.0 // indirect
+diff --git a/go.sum b/go.sum
+index 16526b8d12..0445be92d9 100644
+--- a/go.sum
++++ b/go.sum
+@@ -252,8 +252,8 @@ github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeME
+ github.com/go-chi/chi/v5 v5.0.0/go.mod h1:BBug9lr0cqtdAhsu6R4AAdvufI0/XBzAQSsUqJpoZOs=
+ github.com/go-errors/errors v1.4.2 h1:J6MZopCL4uSllY1OfXM374weqZFFItUbrImctkmUxIA=
+ github.com/go-errors/errors v1.4.2/go.mod h1:sIVyrIiJhuEF+Pj9Ebtd6P/rEYROXFi3BopGUQ5a5Og=
+-github.com/go-jose/go-jose/v4 v4.0.4 h1:VsjPI33J0SB9vQM6PLmNjoHqMQNGPiZ0rHL7Ni7Q6/E=
+-github.com/go-jose/go-jose/v4 v4.0.4/go.mod h1:NKb5HO1EZccyMpiZNbdUw/14tiXNyUJh188dfnMCAfc=
++github.com/go-jose/go-jose/v4 v4.0.5 h1:M6T8+mKZl/+fNNuFHvGIzDz7BTLQPIounk/b9dw3AaE=
++github.com/go-jose/go-jose/v4 v4.0.5/go.mod h1:s3P1lRrkT8igV8D9OjyL4WRyHvjB6a4JSllnOrmmBOA=
+ github.com/go-kit/log v0.1.0/go.mod h1:zbhenjAZHb184qTLMA9ZjW7ThYL0H2mk7Q6pNt4vbaY=
+ github.com/go-logfmt/logfmt v0.5.0/go.mod h1:wCYkCAKZfumFQihp8CzCvQ3paCTfi41vtzG1KdI/P7A=
+ github.com/go-logr/logr v1.2.2/go.mod h1:jdQByPbusPIv2/zmleS9BjJVeZ6kBagPoEUsqbVz/1A=
+diff --git a/vendor/github.com/go-jose/go-jose/v4/CONTRIBUTING.md b/vendor/github.com/go-jose/go-jose/v4/CONTRIBUTING.md
+index b63e1f8fee..4b4805add6 100644
+--- a/vendor/github.com/go-jose/go-jose/v4/CONTRIBUTING.md
++++ b/vendor/github.com/go-jose/go-jose/v4/CONTRIBUTING.md
+@@ -7,9 +7,3 @@ When submitting code, please make every effort to follow existing conventions
+ and style in order to keep the code as readable as possible. Please also make
+ sure all tests pass by running `go test`, and format your code with `go fmt`.
+ We also recommend using `golint` and `errcheck`.
+-
+-Before your code can be accepted into the project you must also sign the
+-Individual Contributor License Agreement.  We use [cla-assistant.io][1] and you
+-will be prompted to sign once a pull request is opened.
+-
+-[1]: https://cla-assistant.io/
+diff --git a/vendor/github.com/go-jose/go-jose/v4/README.md b/vendor/github.com/go-jose/go-jose/v4/README.md
+index 79a7c5ecc8..02b5749546 100644
+--- a/vendor/github.com/go-jose/go-jose/v4/README.md
++++ b/vendor/github.com/go-jose/go-jose/v4/README.md
+@@ -9,14 +9,6 @@ Package jose aims to provide an implementation of the Javascript Object Signing
+ and Encryption set of standards. This includes support for JSON Web Encryption,
+ JSON Web Signature, and JSON Web Token standards.
+
+-**Disclaimer**: This library contains encryption software that is subject to
+-the U.S. Export Administration Regulations. You may not export, re-export,
+-transfer or download this code or any part of it in violation of any United
+-States law, directive or regulation. In particular this software may not be
+-exported or re-exported in any form or on any media to Iran, North Sudan,
+-Syria, Cuba, or North Korea, or to denied persons or entities mentioned on any
+-US maintained blocked list.
+-
+ ## Overview
+
+ The implementation follows the
+@@ -109,6 +101,6 @@ allows attaching a key id.
+
+ Examples can be found in the Godoc
+ reference for this package. The
+-[`jose-util`](https://github.com/go-jose/go-jose/tree/v4/jose-util)
++[`jose-util`](https://github.com/go-jose/go-jose/tree/main/jose-util)
+ subdirectory also contains a small command-line utility which might be useful
+ as an example as well.
+diff --git a/vendor/github.com/go-jose/go-jose/v4/jwe.go b/vendor/github.com/go-jose/go-jose/v4/jwe.go
+index 89f03ee3e1..9f1322dccc 100644
+--- a/vendor/github.com/go-jose/go-jose/v4/jwe.go
++++ b/vendor/github.com/go-jose/go-jose/v4/jwe.go
+@@ -288,10 +288,11 @@ func ParseEncryptedCompact(
+ 	keyAlgorithms []KeyAlgorithm,
+ 	contentEncryption []ContentEncryption,
+ ) (*JSONWebEncryption, error) {
+-	parts := strings.Split(input, ".")
+-	if len(parts) != 5 {
++	// Five parts is four separators
++	if strings.Count(input, ".") != 4 {
+ 		return nil, fmt.Errorf("go-jose/go-jose: compact JWE format must have five parts")
+ 	}
++	parts := strings.SplitN(input, ".", 5)
+
+ 	rawProtected, err := base64.RawURLEncoding.DecodeString(parts[0])
+ 	if err != nil {
+diff --git a/vendor/github.com/go-jose/go-jose/v4/jwk.go b/vendor/github.com/go-jose/go-jose/v4/jwk.go
+index 8a52842106..9e57e93ba2 100644
+--- a/vendor/github.com/go-jose/go-jose/v4/jwk.go
++++ b/vendor/github.com/go-jose/go-jose/v4/jwk.go
+@@ -239,10 +239,10 @@ func (k *JSONWebKey) UnmarshalJSON(data []byte) (err error) {
+ 				keyPub = key
+ 			}
+ 		} else {
+-			err = fmt.Errorf("go-jose/go-jose: unknown curve %s'", raw.Crv)
++			return fmt.Errorf("go-jose/go-jose: unknown curve %s'", raw.Crv)
+ 		}
+ 	default:
+-		err = fmt.Errorf("go-jose/go-jose: unknown json web key type '%s'", raw.Kty)
++		return fmt.Errorf("go-jose/go-jose: unknown json web key type '%s'", raw.Kty)
+ 	}
+
+ 	if err != nil {
+diff --git a/vendor/github.com/go-jose/go-jose/v4/jws.go b/vendor/github.com/go-jose/go-jose/v4/jws.go
+index 3a912301af..d09d8ba507 100644
+--- a/vendor/github.com/go-jose/go-jose/v4/jws.go
++++ b/vendor/github.com/go-jose/go-jose/v4/jws.go
+@@ -327,10 +327,11 @@ func parseSignedCompact(
+ 	payload []byte,
+ 	signatureAlgorithms []SignatureAlgorithm,
+ ) (*JSONWebSignature, error) {
+-	parts := strings.Split(input, ".")
+-	if len(parts) != 3 {
++	// Three parts is two separators
++	if strings.Count(input, ".") != 2 {
+ 		return nil, fmt.Errorf("go-jose/go-jose: compact JWS format must have three parts")
+ 	}
++	parts := strings.SplitN(input, ".", 3)
+
+ 	if parts[1] != "" && payload != nil {
+ 		return nil, fmt.Errorf("go-jose/go-jose: payload is not detached")
+diff --git a/vendor/modules.txt b/vendor/modules.txt
+index 06781a551d..0b64b482ea 100644
+--- a/vendor/modules.txt
++++ b/vendor/modules.txt
+@@ -690,7 +690,7 @@ github.com/getsentry/sentry-go/logrus
+ # github.com/ghodss/yaml v1.0.0
+ ## explicit
+ github.com/ghodss/yaml
+-# github.com/go-jose/go-jose/v4 v4.0.4
++# github.com/go-jose/go-jose/v4 v4.0.5
+ ## explicit; go 1.21
+ github.com/go-jose/go-jose/v4
+ github.com/go-jose/go-jose/v4/cipher
+
+From 8b1ed9f96f7434ead5683015b0ad78014be76ba2 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ond=C5=99ej=20Budai?= <ondrej@budai.cz>
+Date: Tue, 26 Aug 2025 13:46:51 +0200
+Subject: [PATCH 2/2] github: ignore unused functions in shellcheck
+
+Seems to be a false positive (shellcheck doesn't understand traps).
+---
+ .github/workflows/tests.yml | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+index 54185df0c0..e11d7a39fb 100644
+--- a/.github/workflows/tests.yml
++++ b/.github/workflows/tests.yml
+@@ -212,9 +212,9 @@ jobs:
+       with:
+         ignore: vendor # We don't want to fix the code in vendored dependencies
+       env:
+-        # don't check /etc/os-release sourcing, allow useless cats to live inside our codebase, and
+-        # allow seemingly unreachable commands
+-        SHELLCHECK_OPTS: -e SC1091 -e SC2002 -e SC2317
++        # don't check /etc/os-release sourcing, allow useless cats to live inside our codebase,
++        # allow seemingly unreachable commands, and allow unused functions
++        SHELLCHECK_OPTS: -e SC1091 -e SC2002 -e SC2317 -e SC2329
+
+     - name: Do not doube trap signals inside test scripts
+       run: |

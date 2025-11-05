@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:                 osbuild-composer
-Release:              2%{?dist}.openela.0.2
+Release:              3%{?dist}.openela.0.2
 Summary:              An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -36,8 +36,15 @@ License:              Apache-2.0
 URL:                  %{gourl}
 Source0:              %{gosource}
 
-Patch1:               0001-Add-OpenELA-8-and-9-Support.patch
+# https://github.com/osbuild/osbuild-composer/pull/4856
+Patch0:               json-tailoring-conversion.patch
 
+# https://github.com/osbuild/osbuild-composer/pull/4860
+Patch1:               fix-unclosed-logrus-logging-pipes.patch
+
+# https://github.com/osbuild/osbuild-composer/pull/4842
+Patch2:               update-go-jose-dependency.patch
+Patch3:               0001-Add-OpenELA-8-and-9-Support.patch
 
 BuildRequires:        %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
 BuildRequires:        systemd
@@ -463,9 +470,17 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
-* Wed Jun 25 2025 Release Engineering <releng@openela.org> - 132.2.openela.0.2
+* Wed Nov 05 2025 Release Engineering <releng@openela.org> - 132.2.openela.0.2
 - Add OpenELA 8 support and host detection
 - Add OpenELA 9 support and host detection
+
+* Wed Oct 15 2025 Gianluca Zuccarelli <gzuccare@redhat.com> - 132.2-3
+- Fix json tailoring blueprint conversion
+  Resolves: RHEL-111314
+- Fix unclosed logrus logging pipes
+  Resolves: RHEL-102832
+- Update go-jose dependency
+  Resolves: RHEL-82968 (CVE-2025-27144)
 
 * Tue Jun 24 2025 Ondřej Budai <obudai@redhat.com> - 132.2-2
 - Resolves: RHEL-89319 (CVE-2025-22871)
