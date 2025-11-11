@@ -8,11 +8,11 @@
 %bcond_with relax_requires
 
 # The minimum required osbuild version
-%global min_osbuild_version 139
+%global min_osbuild_version 157
 
 %global goipath         github.com/osbuild/osbuild-composer
 
-Version:        134.1
+Version:        149
 
 %gometa
 
@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:           osbuild-composer
-Release:        3%{?dist}
+Release:        1%{?dist}
 Summary:        An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -36,14 +36,6 @@ License:        Apache-2.0
 URL:            %{gourl}
 Source0:        %{gosource}
 
-# https://github.com/osbuild/osbuild-composer/pull/4857
-Patch0: json-tailoring-conversion.patch
-
-# https://github.com/osbuild/osbuild-composer/pull/4867
-Patch1: fix-unclosed-logrus-logging-pipes.patch
-
-# https://github.com/osbuild/osbuild-composer/pull/4841
-Patch2: update-go-jose-dependency.patch
 
 BuildRequires:  %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
 BuildRequires:  systemd
@@ -114,8 +106,6 @@ export LDFLAGS="${LDFLAGS} -X 'github.com/osbuild/osbuild-composer/internal/comm
 %gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-composer %{goipath}/cmd/osbuild-composer
 %gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-worker %{goipath}/cmd/osbuild-worker
 %gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-worker-executor %{goipath}/cmd/osbuild-worker-executor
-%gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-jobsite-manager %{goipath}/cmd/osbuild-jobsite-manager
-%gobuild ${GOTAGS:+-tags=$GOTAGS} -o _bin/osbuild-jobsite-builder %{goipath}/cmd/osbuild-jobsite-builder
 
 make man
 
@@ -124,13 +114,6 @@ make man
 # Build test binaries with `go test -c`, so that they can take advantage of
 # golang's testing package. The golang rpm macros don't support building them
 # directly. Thus, do it manually, taking care to also include a build id.
-#
-# On Fedora, also turn off go modules and set the path to the one into which
-# the golang-* packages install source code.
-%if 0%{?fedora}
-export GO111MODULE=off
-export GOPATH=%{gobuilddir}:%{gopath}
-%endif
 
 TEST_LDFLAGS="${LDFLAGS:-} -B 0x$(od -N 20 -An -tx1 -w100 /dev/urandom | tr -d ' ')"
 
@@ -141,7 +124,6 @@ GOTAGS="${GOTAGS:+$GOTAGS,}rhel%{rhel}"
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-composer-cli-tests %{goipath}/cmd/osbuild-composer-cli-tests
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-dnf-json-tests %{goipath}/cmd/osbuild-dnf-json-tests
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-weldr-tests %{goipath}/internal/client/
-go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-image-tests %{goipath}/cmd/osbuild-image-tests
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-auth-tests %{goipath}/cmd/osbuild-auth-tests
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-koji-tests %{goipath}/cmd/osbuild-koji-tests
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-composer-dbjobqueue-tests %{goipath}/cmd/osbuild-composer-dbjobqueue-tests
@@ -155,8 +137,6 @@ install -m 0755 -vd                                                %{buildroot}%
 install -m 0755 -vp _bin/osbuild-composer                          %{buildroot}%{_libexecdir}/osbuild-composer/
 install -m 0755 -vp _bin/osbuild-worker                            %{buildroot}%{_libexecdir}/osbuild-composer/
 install -m 0755 -vp _bin/osbuild-worker-executor                   %{buildroot}%{_libexecdir}/osbuild-composer/
-install -m 0755 -vp _bin/osbuild-jobsite-manager                   %{buildroot}%{_libexecdir}/osbuild-composer/
-install -m 0755 -vp _bin/osbuild-jobsite-builder                   %{buildroot}%{_libexecdir}/osbuild-composer/
 
 # Only include repositories for the distribution and release
 install -m 0755 -vd                                                %{buildroot}%{_datadir}/osbuild-composer/repositories
@@ -228,7 +208,6 @@ install -m 0755 -vd                                                %{buildroot}%
 install -m 0755 -vp _bin/osbuild-composer-cli-tests                %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-weldr-tests                       %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-dnf-json-tests                    %{buildroot}%{_libexecdir}/osbuild-composer-test/
-install -m 0755 -vp _bin/osbuild-image-tests                       %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-auth-tests                        %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-koji-tests                        %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-composer-dbjobqueue-tests         %{buildroot}%{_libexecdir}/osbuild-composer-test/
@@ -260,9 +239,6 @@ install -m 0644 -vp test/data/ansible/*                            %{buildroot}%
 
 install -m 0755 -vd                                                %{buildroot}%{_datadir}/tests/osbuild-composer/azure
 install -m 0644 -vp test/data/azure/*                              %{buildroot}%{_datadir}/tests/osbuild-composer/azure/
-
-install -m 0755 -vd                                                %{buildroot}%{_datadir}/tests/osbuild-composer/manifests
-install -m 0644 -vp test/data/manifests/*                          %{buildroot}%{_datadir}/tests/osbuild-composer/manifests/
 
 install -m 0755 -vd                                                %{buildroot}%{_datadir}/tests/osbuild-composer/cloud-init
 install -m 0644 -vp test/data/cloud-init/*                         %{buildroot}%{_datadir}/tests/osbuild-composer/cloud-init/
@@ -300,14 +276,12 @@ install -m 0644 -vp test/data/rhel-upgrade/*                       %{buildroot}%
 %check
 export GOFLAGS="-buildmode=pie"
 %if 0%{?rhel}
-export GOFLAGS+=" -mod=vendor -tags=exclude_graphdriver_btrfs"
+export GOFLAGS+=" -tags=exclude_graphdriver_btrfs"
+%endif
+
 export GOPATH=$PWD/_build:%{gopath}
 # cd inside GOPATH, otherwise go with GO111MODULE=off ignores vendor directory
 cd $PWD/_build/src/%{goipath}
-%gotest ./...
-%else
-%gocheck
-%endif
 
 %post
 %systemd_post osbuild-composer.service osbuild-composer.socket osbuild-composer-api.socket osbuild-composer-prometheus.socket osbuild-remote-worker.socket
@@ -364,8 +338,6 @@ The worker for osbuild-composer
 %files worker
 %{_libexecdir}/osbuild-composer/osbuild-worker
 %{_libexecdir}/osbuild-composer/osbuild-worker-executor
-%{_libexecdir}/osbuild-composer/osbuild-jobsite-manager
-%{_libexecdir}/osbuild-composer/osbuild-jobsite-builder
 %{_unitdir}/osbuild-worker@.service
 %{_unitdir}/osbuild-remote-worker@.service
 
@@ -462,19 +434,44 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
-* Wed Oct 15 2025 Gianluca Zuccarelli <gzuccare@redhat.com> - 134.1-3
-- Fix json tailoring blueprint conversion
-  Resolves: RHEL-115392
-- Fix unclosed logrus logging pipes
-  Resolves: RHEL-121533
-- Update go-jose dependency
-  Resolves: RHEL-82957 (CVE-2025-27144)
+* Thu Aug 21 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-1
+- New upstream release
 
-* Tue Jun 24 2025 Ondřej Budai <obudai@redhat.com> - 134.1-2
-- Resolves: RHEL-89221 (CVE-2025-22871)
+* Wed Aug 06 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 147-1
+- New upstream release
 
-* Fri Apr 25 2025 Tomáš Hozza <thozza@redhat.com> - 134.1-1
-- Resolves: RHEL-84629
+* Wed Jul 23 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 146-1
+- New upstream release
+
+* Sat Jul 12 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 145-1
+- New upstream release
+
+* Wed Jun 25 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 144-1
+- New upstream release
+
+* Wed Jun 11 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 143-1
+- New upstream release
+
+* Thu Jun 05 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 142-1
+- New upstream release
+
+* Mon May 19 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 141-1
+- New upstream release
+
+* Wed Apr 23 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 139-1
+- New upstream release
+
+* Wed Apr 16 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 138-1
+- New upstream release
+
+* Thu Apr 03 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 137-1
+- New upstream release
+
+* Mon Mar 31 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 136-1
+- New upstream release
+
+* Wed Mar 05 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 135-1
+- New upstream release
 
 * Mon Feb 24 2025 Tomáš Hozza <thozza@redhat.com> - 134-1
 - New upstream release
