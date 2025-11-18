@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:                 osbuild-composer
-Release:              1%{?dist}.openela.0.2
+Release:              2%{?dist}.openela.0.2
 Summary:              An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -36,6 +36,7 @@ License:              Apache-2.0
 URL:                  %{gourl}
 Source0:              %{gosource}
 
+Patch0:               enable-bsi-oscap-profile.patch
 Patch1:               0001-Add-OpenELA-8-and-9-Support.patch
 
 
@@ -444,9 +445,13 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
-* Tue Nov 11 2025 Release Engineering <releng@openela.org> - 149.openela.0.2
+* Tue Nov 18 2025 Release Engineering <releng@openela.org> - 149.openela.0.2
 - Add OpenELA 8 support and host detection
 - Add OpenELA 9 support and host detection
+
+* Wed Oct 15 2025 Gianluca Zuccarelli <gzuccare@redhat.com> - 149-2
+- Add missing BSI OpenSCAP profile to the allowlist
+  Resolves: RHEL-121525
 
 * Thu Aug 21 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-1
 - New upstream release
