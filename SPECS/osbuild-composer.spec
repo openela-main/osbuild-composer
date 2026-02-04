@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:           osbuild-composer
-Release:        1%{?dist}
+Release:        4%{?dist}
 Summary:        An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -36,6 +36,7 @@ License:        Apache-2.0
 URL:            %{gourl}
 Source0:        %{gosource}
 
+Patch0: 0001-go.mod-update-osbuild-images-to-v0.178.2.patch
 
 BuildRequires:  %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
 BuildRequires:  systemd
@@ -434,6 +435,14 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
+* Tue Jan 06 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-4
+- Rebuilt to fix: 
+  - CVE-2025-58183
+  - RHEL-125637
+
+* Fri Dec 19 2025 Achilleas Koutsou <achilleas@redhat.com> - 149-3
+- Add Red Hat v4 key for RHEL 10.1 RPMs
+
 * Thu Aug 21 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-1
 - New upstream release
 
