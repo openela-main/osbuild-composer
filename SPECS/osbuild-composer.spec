@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:           osbuild-composer
-Release:        4%{?dist}
+Release:        5%{?dist}
 Summary:        An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -435,6 +435,17 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
+* Thu Feb 26 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-5
+- Rebuilt to fix: 
+  - CVE-2025-61726
+  - CVE-2025-61728
+  - CVE-2025-61729
+  - CVE-2025-68121
+  - RHEL-146726
+  - RHEL-146931
+  - RHEL-147353
+  - RHEL-149232
+
 * Tue Jan 06 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-4
 - Rebuilt to fix: 
   - CVE-2025-58183
