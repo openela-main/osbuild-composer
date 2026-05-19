@@ -8,11 +8,11 @@
 %bcond_with relax_requires
 
 # The minimum required osbuild version
-%global min_osbuild_version 157
+%global min_osbuild_version 171
 
 %global goipath         github.com/osbuild/osbuild-composer
 
-Version:        149
+Version:        164
 
 %gometa
 
@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:           osbuild-composer
-Release:        6%{?dist}
+Release:        1%{?dist}
 Summary:        An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -36,7 +36,6 @@ License:        Apache-2.0
 URL:            %{gourl}
 Source0:        %{gosource}
 
-Patch0: 0001-go.mod-update-osbuild-images-to-v0.178.2.patch
 
 BuildRequires:  %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
 BuildRequires:  systemd
@@ -123,7 +122,6 @@ GOTAGS="${GOTAGS:+$GOTAGS,}rhel%{rhel}"
 %endif
 
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-composer-cli-tests %{goipath}/cmd/osbuild-composer-cli-tests
-go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-dnf-json-tests %{goipath}/cmd/osbuild-dnf-json-tests
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-weldr-tests %{goipath}/internal/client/
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-auth-tests %{goipath}/cmd/osbuild-auth-tests
 go test -c -tags="integration${GOTAGS:+,$GOTAGS}" -ldflags="${TEST_LDFLAGS}" -o _bin/osbuild-koji-tests %{goipath}/cmd/osbuild-koji-tests
@@ -208,7 +206,6 @@ install -m 0644 -vp docs/*.7                                       %{buildroot}%
 install -m 0755 -vd                                                %{buildroot}%{_libexecdir}/osbuild-composer-test
 install -m 0755 -vp _bin/osbuild-composer-cli-tests                %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-weldr-tests                       %{buildroot}%{_libexecdir}/osbuild-composer-test/
-install -m 0755 -vp _bin/osbuild-dnf-json-tests                    %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-auth-tests                        %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-koji-tests                        %{buildroot}%{_libexecdir}/osbuild-composer-test/
 install -m 0755 -vp _bin/osbuild-composer-dbjobqueue-tests         %{buildroot}%{_libexecdir}/osbuild-composer-test/
@@ -308,9 +305,6 @@ cd $PWD/_build/src/%{goipath}
 %package core
 Summary:    The core osbuild-composer binary
 Requires:   osbuild-depsolve-dnf >= %{min_osbuild_version}
-# This version needs to get bumped everytime the osbuild-depsolve-dnf json
-# API changes in incompatible ways
-Requires:   osbuild-dnf-json-api = 8
 Provides:   %{name}-dnf-json = %{version}-%{release}
 Obsoletes:  %{name}-dnf-json < %{version}-%{release}
 
@@ -435,31 +429,23 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
-* Wed Apr 15 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-6
-- Rebuilt to fix: 
-  - CVE-2026-25679
-  - CVE-2026-27137
-  - RHEL-158464
-  - RHEL-158602
+* Mon Feb 23 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 164-1
+- New upstream release
 
-* Thu Feb 26 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-5
-- Rebuilt to fix: 
-  - CVE-2025-61726
-  - CVE-2025-61728
-  - CVE-2025-61729
-  - CVE-2025-68121
-  - RHEL-146726
-  - RHEL-146931
-  - RHEL-147353
-  - RHEL-149232
+* Tue Feb 17 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 163-1
+- New upstream release
 
-* Tue Jan 06 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-4
-- Rebuilt to fix: 
-  - CVE-2025-58183
-  - RHEL-125637
+* Wed Feb 04 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 161-1
+- New upstream release
 
-* Fri Dec 19 2025 Achilleas Koutsou <achilleas@redhat.com> - 149-3
-- Add Red Hat v4 key for RHEL 10.1 RPMs
+* Wed Jan 21 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 160-1
+- New upstream release
+
+* Wed Nov 12 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 155-1
+- New upstream release
+
+* Mon Nov 03 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 154-1
+- New upstream release
 
 * Thu Aug 21 2025 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 149-1
 - New upstream release
