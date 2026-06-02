@@ -12,7 +12,7 @@
 
 %global goipath         github.com/osbuild/osbuild-composer
 
-Version:        164
+Version:        165.1
 
 %gometa
 
@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:           osbuild-composer
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -36,6 +36,7 @@ License:        Apache-2.0
 URL:            %{gourl}
 Source0:        %{gosource}
 
+Patch0: 0001-update-10.2-test-repositories.patch
 
 BuildRequires:  %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
 BuildRequires:  systemd
@@ -429,6 +430,12 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
+* Fri May 29 2026 sraymaek <sraymaek@redhat.com> - 165.1-2
+- Patch rhel-10.2 test repositories
+
+* Thu May 28 2026 sraymaek <sraymaek@redhat.com> - 165.1-1
+- New upstream release
+
 * Mon Feb 23 2026 imagebuilder-bot <imagebuilder-bots+imagebuilder-bot@redhat.com> - 164-1
 - New upstream release
 
