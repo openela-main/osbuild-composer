@@ -1,6 +1,6 @@
-From 5b5c0584b05fe7e82accb7425cd85faf15ee02cb Mon Sep 17 00:00:00 2001
-From: Alex Burmashev <alexander.burmashev@oracle.com>
-Date: Tue, 18 Nov 2025 13:08:25 +0000
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Release Engineering <releng@openela.org>
+Date: Fri, 10 Jul 2026 08:47:16 +0000
 Subject: [PATCH] Update OpenELA debranding
 
 ---
@@ -8,13 +8,13 @@ Subject: [PATCH] Update OpenELA debranding
  1 file changed, 8 insertions(+)
 
 diff --git a/SPECS/osbuild-composer.spec b/SPECS/osbuild-composer.spec
-index cf66997..22df151 100644
+index 3321cd9..a9dbdcf 100644
 --- a/SPECS/osbuild-composer.spec
 +++ b/SPECS/osbuild-composer.spec
-@@ -188,6 +188,14 @@ done
+@@ -187,6 +187,14 @@ done
  %endif
  %endif
-
+ 
 +%if 0%{?openela}
 +%if 0%{?openela} >= 9
 +install -m 0644 -vp repositories/openela-*                           %{buildroot}%{_datadir}/osbuild-composer/repositories/
