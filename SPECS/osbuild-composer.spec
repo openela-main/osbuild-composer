@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:           osbuild-composer
-Release:        3%{?dist}
+Release:        3%{?dist}.1
 Summary:        An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -431,6 +431,10 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
+* Mon Jun 22 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 165.1-3.1
+- Rebuild for updated golang
+- Resolves: RHEL-175288, RHEL-177127
+
 * Fri Jun 6 2026 sraymaek <sraymaek@redhat.com> - 165.1-3
 - Patch rhel-10 and rhel-9 repositories via images v0.245.1
 
