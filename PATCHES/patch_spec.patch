@@ -11,7 +11,7 @@ diff --git a/SPECS/osbuild-composer.spec b/SPECS/osbuild-composer.spec
 index 3321cd9..a9dbdcf 100644
 --- a/SPECS/osbuild-composer.spec
 +++ b/SPECS/osbuild-composer.spec
-@@ -187,6 +187,14 @@ done
+@@ -188,6 +188,14 @@ done
  %endif
  %endif
  
