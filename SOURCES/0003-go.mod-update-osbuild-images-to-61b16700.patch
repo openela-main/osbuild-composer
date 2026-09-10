@@ -1,0 +1,163 @@
+From 46ef95b6c588cb8e7d6b07c9be5ef853d485fdde Mon Sep 17 00:00:00 2001
+From: Sanne Raymaekers <sanne.raymaekers@gmail.com>
+Date: Fri, 31 Jul 2026 19:39:09 +0200
+Subject: [PATCH 1/1] go.mod: update osbuild/images to 61b16700
+
+This enables bootupd metadata generation for edge-commits, including for
+9.6+ images.
+---
+ go.mod                                        |  2 +-
+ go.sum                                        |  4 +--
+ .../data/distrodefs/rhel-9/imagetypes.yaml    | 27 +++++++++++++--
+ .../images/data/repositories/fedora-45.json   | 34 -------------------
+ vendor/modules.txt                            |  2 +-
+ 5 files changed, 28 insertions(+), 41 deletions(-)
+ delete mode 100644 vendor/github.com/osbuild/images/data/repositories/fedora-45.json
+
+diff --git a/go.mod b/go.mod
+index e338fa0fc..c68feaf2a 100644
+--- a/go.mod
++++ b/go.mod
+@@ -32,7 +32,7 @@ require (
+ 	github.com/oapi-codegen/runtime v1.2.0
+ 	github.com/openshift-online/ocm-sdk-go v0.1.497
+ 	github.com/osbuild/blueprint v1.23.0
+-	github.com/osbuild/images v0.245.1
++	github.com/osbuild/images v0.245.2-0.20260731173023-61b16700ffae
+ 	github.com/osbuild/osbuild-composer/pkg/splunk_logger v0.0.0-20240814102216-0239db53236d
+ 	github.com/prometheus/client_golang v1.23.2
+ 	github.com/segmentio/ksuid v1.0.4
+diff --git a/go.sum b/go.sum
+index b426ddad5..eec68af1f 100644
+--- a/go.sum
++++ b/go.sum
+@@ -520,8 +520,8 @@ github.com/oracle/oci-go-sdk/v54 v54.0.0 h1:CDLjeSejv2aDpElAJrhKpi6zvT/zhZCZuXch
+ github.com/oracle/oci-go-sdk/v54 v54.0.0/go.mod h1:+t+yvcFGVp+3ZnztnyxqXfQDsMlq8U25faBLa+mqCMc=
+ github.com/osbuild/blueprint v1.23.0 h1:HGMuRKpYg2xBy1QnAQDaIM6xnmzXh4QBrjic86C6Xr8=
+ github.com/osbuild/blueprint v1.23.0/go.mod h1:HPlJzkEl7q5g8hzaGksUk7ifFAy9QFw9LmzhuFOAVm4=
+-github.com/osbuild/images v0.245.1 h1:xCwko1euDFzcn1/z0LrWxBWYfpB8ViS22Hr3ejwkLE8=
+-github.com/osbuild/images v0.245.1/go.mod h1:lr0fqJjjOCurTMbgMSDxTwnEalx6CkOVqyB0QmvNqO4=
++github.com/osbuild/images v0.245.2-0.20260731173023-61b16700ffae h1:XaZYsNR7B7gmjUXXHelIaJCR33zPS51JbReebivGrOk=
++github.com/osbuild/images v0.245.2-0.20260731173023-61b16700ffae/go.mod h1:lr0fqJjjOCurTMbgMSDxTwnEalx6CkOVqyB0QmvNqO4=
+ github.com/osbuild/osbuild-composer/pkg/splunk_logger v0.0.0-20240814102216-0239db53236d h1:r9BFPDv0uuA9k1947Jybcxs36c/pTywWS1gjeizvtcQ=
+ github.com/osbuild/osbuild-composer/pkg/splunk_logger v0.0.0-20240814102216-0239db53236d/go.mod h1:zR1iu/hOuf+OQNJlk70tju9IqzzM4ycq0ectkFBm94U=
+ github.com/perimeterx/marshmallow v1.1.5 h1:a2LALqQ1BlHM8PZblsDdidgv1mWi1DgC2UmX50IvK2s=
+diff --git a/vendor/github.com/osbuild/images/data/distrodefs/rhel-9/imagetypes.yaml b/vendor/github.com/osbuild/images/data/distrodefs/rhel-9/imagetypes.yaml
+index c472a39c2..db65f748f 100644
+--- a/vendor/github.com/osbuild/images/data/distrodefs/rhel-9/imagetypes.yaml
++++ b/vendor/github.com/osbuild/images/data/distrodefs/rhel-9/imagetypes.yaml
+@@ -2813,6 +2813,8 @@ image_types:
+             # XXX: sadly the osbuild options are upper case for "Unit" vs lower above :(
+             Unit:
+               ConditionPathExists: "!/usr/libexec/greenboot/greenboot"
++      # Enable bootupd metadata generation for ostree commits (9.6+ only)
++      bootupd_gen_metadata: true
+       enabled_services: &enabled_services_edge
+         # XXX: shared with 9.2
+         - "NetworkManager.service"
+@@ -2822,6 +2824,8 @@ image_types:
+         # only on rhel-9.2+ and centos
+         - "ignition-firstboot-complete.service"
+         - "coreos-ignition-write-issues.service"
++        # only on rhel-9.6+
++        - "bootloader-update.service"
+       conditions: &conditions_edge_commit_image_config
+         "rhel-9.1 and below do not have ignition":
+           when:
+@@ -2833,6 +2837,23 @@ image_types:
+               - "firewalld.service"
+               - "sshd.service"
+               - "fdo-client-linuxapp.service"
++        "rhel-9.5 and below do not have bootupd bootloader update service":
++          when:
++            version_greater_or_equal: "9.2"
++            version_less_than: "9.6"
++          shallow_merge:
++            enabled_services:
++              - "NetworkManager.service"
++              - "firewalld.service"
++              - "sshd.service"
++              - "fdo-client-linuxapp.service"
++              - "ignition-firstboot-complete.service"
++              - "coreos-ignition-write-issues.service"
++        "rhel-9.5 and below do not have bootupd":
++          when:
++            version_less_than: "9.6"
++          shallow_merge:
++            bootupd_gen_metadata: false
+     package_sets:
+       os:
+         - &edge_commit_pkgset
+@@ -2915,13 +2936,13 @@ image_types:
+           exclude:
+             - "rng-tools"
+           conditions: &conditions_pkgsets_edge_commit
+-            "greenboot in 9.8 and c9s requires bootupd":
++            "greenboot in 9.6 and c9s requires bootupd":
+               # we don't want bootupd in edge commits, but greenboot requires
+-              # it in 9.8 and c9s, so we can only exclude it for older versions
++              # it in 9.6 and c9s, so we can only exclude it for older versions
+               # NOTE: this is temporary
+               # see https://github.com/fedora-iot/greenboot-rs/pull/142
+               when:
+-                version_less_than: "9.8"
++                version_less_than: "9.6"
+               append:
+                 exclude:
+                   - "bootupd"
+diff --git a/vendor/github.com/osbuild/images/data/repositories/fedora-45.json b/vendor/github.com/osbuild/images/data/repositories/fedora-45.json
+deleted file mode 100644
+index 8568931ed..000000000
+--- a/vendor/github.com/osbuild/images/data/repositories/fedora-45.json
++++ /dev/null
+@@ -1,34 +0,0 @@
+-{
+-  "x86_64": [
+-    {
+-      "name": "fedora",
+-      "metalink": "https://mirrors.fedoraproject.org/metalink?repo=fedora-45&arch=x86_64",
+-      "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nmQINBGiIvJgBEAD3LK442lirRR/SSY884GtAlFjC4VbtOW82pks44Nu/7sbWQObo\nA9kyCs69j/lCFKsq12yU+yk0rOSNHQT1aKwe64GOi9MokcOYK1gq0DtBvakl25o1\npnBok+zuBUfwTQAsNTbevw1t5rdBJKusnuPPHjTnVdjVS9HU4QhZunI/7Y9QleX2\noXkN2VFi0mhF2y8gU4Tve0xxSTjfgYM6ObV3W9vMusxmAabvCfdcVPpy9iEZxyjw\nNL4Svkw3bt50plmnRuWRXA+P6R3SK/1XKBW/9jVr4bgs6d763VfVCMbKLpQvuWIX\n6/UUOEc9LDziEjxjNBPFfLq+N7kN8235B26fuj+3XM2OqLtRv4/bl0Mryn13VrJl\nhvdLSlmkjROlzywrGvZ/geqyqaSuEZMnWN6znxV/qt8+tEHJXNFO882wHOLTq+5F\n6Bm/aJvdGxSffIFQyylcEzGaNgsH7AvkZPMqk2nMJ3y1KQx+LxdLM5hwGSexdaQ0\nwyW5DMH1Xn49J0nNE/IPWgBlRVAz146CNHMy0kR0J9dAUxg+1GeGKYnZ+q9mvs07\n82rFUqgJLq1gIBEVxYVh8eaO4u1wxWb+/LSx6OjZ7yFmZjN3c6V67Fwql/0EONic\nQgI/2FyxLeYmQr19Cl3EY7b50Ql95RT5OqtAnqcYrzsjuv4n489F/ObRjwARAQAB\ntDFGZWRvcmEgKDQ1KSA8ZmVkb3JhLTQ1LXByaW1hcnlAZmVkb3JhcHJvamVjdC5v\ncmc+iQJSBBMBCAA8FiEET1CmEUzVxpdqfxF5ZVpLAvV3hh4FAmiIvJgCGw8FCwkI\nBwIDIgIBBhUKCQgLAgQWAgMBAh4HAheAAAoJEGVaSwL1d4YeErcQAMnCTVRF+W1A\nW2kE9vQrqEXFj7wPXIH1uiwUAKtpLffjoD8SFekU6AqhrvMS1JgS0NsTwwvqbZXe\nZl7eTgMZ8XPxhufZ272pUaIDMlREnvoLEHb/HTbcSP8bBdCEzc5FwSNgwZEYRTC/\nOVhJ1isF54fd3JC9741feCgPOMG94dj1VX7FlZuq1AQsXKvI9H3GEm6DiqHg4nVR\nWprMP7/sKqrgNSWx4s0zC/4WpALOgLXJO8qZOtul9SzcPmt4E56jjJ7TNX3uQcgu\n0zKFdzb92tJ6WLpVsFk5AgBoZFSi7xZEh+nQzu/PwMorxNyw2WvKR5+avWQCY/WO\npmPIBAL4IevB/sGyrDVdh1ZNMTMIf3Pz3jkn2BGMOAo4ohP+5P4hFzt/4nOm5fL6\nDpJxlCcWaFjMuZgdJY9IHqRcwtnX4nGnrv0cbYAjt59cnHuzqzW84KWJcDEy+3v6\njAhHn6UM27CGCN99hfh7zhj+fMcOOyugCwxbjke123uNC80J1WADB0KF99en1p1f\n1VHBOfS3IS8ezmlWFrllrG0Rxl1a9LDkQJivH5mV0HNmYvRPlWky/mP7q66TRHKs\nJfD7idqM7pdf6u4vYpGq/MlbGgK4xCm7geaoLWDN5zExgrgZFzgtieIEa2M1uumj\nBRh9EFo/y5xhwu9mVgCJmLCLW/ByEYJE\n=7kLn\n-----END PGP PUBLIC KEY BLOCK-----\n",
+-      "check_gpg": true
+-    }
+-  ],
+-  "aarch64": [
+-    {
+-      "name": "fedora",
+-      "metalink": "https://mirrors.fedoraproject.org/metalink?repo=fedora-45&arch=aarch64",
+-      "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nmQINBGiIvJgBEAD3LK442lirRR/SSY884GtAlFjC4VbtOW82pks44Nu/7sbWQObo\nA9kyCs69j/lCFKsq12yU+yk0rOSNHQT1aKwe64GOi9MokcOYK1gq0DtBvakl25o1\npnBok+zuBUfwTQAsNTbevw1t5rdBJKusnuPPHjTnVdjVS9HU4QhZunI/7Y9QleX2\noXkN2VFi0mhF2y8gU4Tve0xxSTjfgYM6ObV3W9vMusxmAabvCfdcVPpy9iEZxyjw\nNL4Svkw3bt50plmnRuWRXA+P6R3SK/1XKBW/9jVr4bgs6d763VfVCMbKLpQvuWIX\n6/UUOEc9LDziEjxjNBPFfLq+N7kN8235B26fuj+3XM2OqLtRv4/bl0Mryn13VrJl\nhvdLSlmkjROlzywrGvZ/geqyqaSuEZMnWN6znxV/qt8+tEHJXNFO882wHOLTq+5F\n6Bm/aJvdGxSffIFQyylcEzGaNgsH7AvkZPMqk2nMJ3y1KQx+LxdLM5hwGSexdaQ0\nwyW5DMH1Xn49J0nNE/IPWgBlRVAz146CNHMy0kR0J9dAUxg+1GeGKYnZ+q9mvs07\n82rFUqgJLq1gIBEVxYVh8eaO4u1wxWb+/LSx6OjZ7yFmZjN3c6V67Fwql/0EONic\nQgI/2FyxLeYmQr19Cl3EY7b50Ql95RT5OqtAnqcYrzsjuv4n489F/ObRjwARAQAB\ntDFGZWRvcmEgKDQ1KSA8ZmVkb3JhLTQ1LXByaW1hcnlAZmVkb3JhcHJvamVjdC5v\ncmc+iQJSBBMBCAA8FiEET1CmEUzVxpdqfxF5ZVpLAvV3hh4FAmiIvJgCGw8FCwkI\nBwIDIgIBBhUKCQgLAgQWAgMBAh4HAheAAAoJEGVaSwL1d4YeErcQAMnCTVRF+W1A\nW2kE9vQrqEXFj7wPXIH1uiwUAKtpLffjoD8SFekU6AqhrvMS1JgS0NsTwwvqbZXe\nZl7eTgMZ8XPxhufZ272pUaIDMlREnvoLEHb/HTbcSP8bBdCEzc5FwSNgwZEYRTC/\nOVhJ1isF54fd3JC9741feCgPOMG94dj1VX7FlZuq1AQsXKvI9H3GEm6DiqHg4nVR\nWprMP7/sKqrgNSWx4s0zC/4WpALOgLXJO8qZOtul9SzcPmt4E56jjJ7TNX3uQcgu\n0zKFdzb92tJ6WLpVsFk5AgBoZFSi7xZEh+nQzu/PwMorxNyw2WvKR5+avWQCY/WO\npmPIBAL4IevB/sGyrDVdh1ZNMTMIf3Pz3jkn2BGMOAo4ohP+5P4hFzt/4nOm5fL6\nDpJxlCcWaFjMuZgdJY9IHqRcwtnX4nGnrv0cbYAjt59cnHuzqzW84KWJcDEy+3v6\njAhHn6UM27CGCN99hfh7zhj+fMcOOyugCwxbjke123uNC80J1WADB0KF99en1p1f\n1VHBOfS3IS8ezmlWFrllrG0Rxl1a9LDkQJivH5mV0HNmYvRPlWky/mP7q66TRHKs\nJfD7idqM7pdf6u4vYpGq/MlbGgK4xCm7geaoLWDN5zExgrgZFzgtieIEa2M1uumj\nBRh9EFo/y5xhwu9mVgCJmLCLW/ByEYJE\n=7kLn\n-----END PGP PUBLIC KEY BLOCK-----\n",
+-      "check_gpg": true
+-    }
+-  ],
+-  "ppc64le": [
+-    {
+-      "name": "fedora",
+-      "metalink": "https://mirrors.fedoraproject.org/metalink?repo=fedora-45&arch=ppc64le",
+-      "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nmQINBGiIvJgBEAD3LK442lirRR/SSY884GtAlFjC4VbtOW82pks44Nu/7sbWQObo\nA9kyCs69j/lCFKsq12yU+yk0rOSNHQT1aKwe64GOi9MokcOYK1gq0DtBvakl25o1\npnBok+zuBUfwTQAsNTbevw1t5rdBJKusnuPPHjTnVdjVS9HU4QhZunI/7Y9QleX2\noXkN2VFi0mhF2y8gU4Tve0xxSTjfgYM6ObV3W9vMusxmAabvCfdcVPpy9iEZxyjw\nNL4Svkw3bt50plmnRuWRXA+P6R3SK/1XKBW/9jVr4bgs6d763VfVCMbKLpQvuWIX\n6/UUOEc9LDziEjxjNBPFfLq+N7kN8235B26fuj+3XM2OqLtRv4/bl0Mryn13VrJl\nhvdLSlmkjROlzywrGvZ/geqyqaSuEZMnWN6znxV/qt8+tEHJXNFO882wHOLTq+5F\n6Bm/aJvdGxSffIFQyylcEzGaNgsH7AvkZPMqk2nMJ3y1KQx+LxdLM5hwGSexdaQ0\nwyW5DMH1Xn49J0nNE/IPWgBlRVAz146CNHMy0kR0J9dAUxg+1GeGKYnZ+q9mvs07\n82rFUqgJLq1gIBEVxYVh8eaO4u1wxWb+/LSx6OjZ7yFmZjN3c6V67Fwql/0EONic\nQgI/2FyxLeYmQr19Cl3EY7b50Ql95RT5OqtAnqcYrzsjuv4n489F/ObRjwARAQAB\ntDFGZWRvcmEgKDQ1KSA8ZmVkb3JhLTQ1LXByaW1hcnlAZmVkb3JhcHJvamVjdC5v\ncmc+iQJSBBMBCAA8FiEET1CmEUzVxpdqfxF5ZVpLAvV3hh4FAmiIvJgCGw8FCwkI\nBwIDIgIBBhUKCQgLAgQWAgMBAh4HAheAAAoJEGVaSwL1d4YeErcQAMnCTVRF+W1A\nW2kE9vQrqEXFj7wPXIH1uiwUAKtpLffjoD8SFekU6AqhrvMS1JgS0NsTwwvqbZXe\nZl7eTgMZ8XPxhufZ272pUaIDMlREnvoLEHb/HTbcSP8bBdCEzc5FwSNgwZEYRTC/\nOVhJ1isF54fd3JC9741feCgPOMG94dj1VX7FlZuq1AQsXKvI9H3GEm6DiqHg4nVR\nWprMP7/sKqrgNSWx4s0zC/4WpALOgLXJO8qZOtul9SzcPmt4E56jjJ7TNX3uQcgu\n0zKFdzb92tJ6WLpVsFk5AgBoZFSi7xZEh+nQzu/PwMorxNyw2WvKR5+avWQCY/WO\npmPIBAL4IevB/sGyrDVdh1ZNMTMIf3Pz3jkn2BGMOAo4ohP+5P4hFzt/4nOm5fL6\nDpJxlCcWaFjMuZgdJY9IHqRcwtnX4nGnrv0cbYAjt59cnHuzqzW84KWJcDEy+3v6\njAhHn6UM27CGCN99hfh7zhj+fMcOOyugCwxbjke123uNC80J1WADB0KF99en1p1f\n1VHBOfS3IS8ezmlWFrllrG0Rxl1a9LDkQJivH5mV0HNmYvRPlWky/mP7q66TRHKs\nJfD7idqM7pdf6u4vYpGq/MlbGgK4xCm7geaoLWDN5zExgrgZFzgtieIEa2M1uumj\nBRh9EFo/y5xhwu9mVgCJmLCLW/ByEYJE\n=7kLn\n-----END PGP PUBLIC KEY BLOCK-----\n",
+-      "check_gpg": true
+-    }
+-  ],
+-  "s390x": [
+-    {
+-      "name": "fedora",
+-      "metalink": "https://mirrors.fedoraproject.org/metalink?repo=fedora-45&arch=s390x",
+-      "gpgkey": "-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nmQINBGiIvJgBEAD3LK442lirRR/SSY884GtAlFjC4VbtOW82pks44Nu/7sbWQObo\nA9kyCs69j/lCFKsq12yU+yk0rOSNHQT1aKwe64GOi9MokcOYK1gq0DtBvakl25o1\npnBok+zuBUfwTQAsNTbevw1t5rdBJKusnuPPHjTnVdjVS9HU4QhZunI/7Y9QleX2\noXkN2VFi0mhF2y8gU4Tve0xxSTjfgYM6ObV3W9vMusxmAabvCfdcVPpy9iEZxyjw\nNL4Svkw3bt50plmnRuWRXA+P6R3SK/1XKBW/9jVr4bgs6d763VfVCMbKLpQvuWIX\n6/UUOEc9LDziEjxjNBPFfLq+N7kN8235B26fuj+3XM2OqLtRv4/bl0Mryn13VrJl\nhvdLSlmkjROlzywrGvZ/geqyqaSuEZMnWN6znxV/qt8+tEHJXNFO882wHOLTq+5F\n6Bm/aJvdGxSffIFQyylcEzGaNgsH7AvkZPMqk2nMJ3y1KQx+LxdLM5hwGSexdaQ0\nwyW5DMH1Xn49J0nNE/IPWgBlRVAz146CNHMy0kR0J9dAUxg+1GeGKYnZ+q9mvs07\n82rFUqgJLq1gIBEVxYVh8eaO4u1wxWb+/LSx6OjZ7yFmZjN3c6V67Fwql/0EONic\nQgI/2FyxLeYmQr19Cl3EY7b50Ql95RT5OqtAnqcYrzsjuv4n489F/ObRjwARAQAB\ntDFGZWRvcmEgKDQ1KSA8ZmVkb3JhLTQ1LXByaW1hcnlAZmVkb3JhcHJvamVjdC5v\ncmc+iQJSBBMBCAA8FiEET1CmEUzVxpdqfxF5ZVpLAvV3hh4FAmiIvJgCGw8FCwkI\nBwIDIgIBBhUKCQgLAgQWAgMBAh4HAheAAAoJEGVaSwL1d4YeErcQAMnCTVRF+W1A\nW2kE9vQrqEXFj7wPXIH1uiwUAKtpLffjoD8SFekU6AqhrvMS1JgS0NsTwwvqbZXe\nZl7eTgMZ8XPxhufZ272pUaIDMlREnvoLEHb/HTbcSP8bBdCEzc5FwSNgwZEYRTC/\nOVhJ1isF54fd3JC9741feCgPOMG94dj1VX7FlZuq1AQsXKvI9H3GEm6DiqHg4nVR\nWprMP7/sKqrgNSWx4s0zC/4WpALOgLXJO8qZOtul9SzcPmt4E56jjJ7TNX3uQcgu\n0zKFdzb92tJ6WLpVsFk5AgBoZFSi7xZEh+nQzu/PwMorxNyw2WvKR5+avWQCY/WO\npmPIBAL4IevB/sGyrDVdh1ZNMTMIf3Pz3jkn2BGMOAo4ohP+5P4hFzt/4nOm5fL6\nDpJxlCcWaFjMuZgdJY9IHqRcwtnX4nGnrv0cbYAjt59cnHuzqzW84KWJcDEy+3v6\njAhHn6UM27CGCN99hfh7zhj+fMcOOyugCwxbjke123uNC80J1WADB0KF99en1p1f\n1VHBOfS3IS8ezmlWFrllrG0Rxl1a9LDkQJivH5mV0HNmYvRPlWky/mP7q66TRHKs\nJfD7idqM7pdf6u4vYpGq/MlbGgK4xCm7geaoLWDN5zExgrgZFzgtieIEa2M1uumj\nBRh9EFo/y5xhwu9mVgCJmLCLW/ByEYJE\n=7kLn\n-----END PGP PUBLIC KEY BLOCK-----\n",
+-      "check_gpg": true
+-    }
+-  ]
+-}
+diff --git a/vendor/modules.txt b/vendor/modules.txt
+index 9866652fc..06c010c43 100644
+--- a/vendor/modules.txt
++++ b/vendor/modules.txt
+@@ -974,7 +974,7 @@ github.com/oracle/oci-go-sdk/v54/workrequests
+ ## explicit; go 1.23.9
+ github.com/osbuild/blueprint/internal/common
+ github.com/osbuild/blueprint/pkg/blueprint
+-# github.com/osbuild/images v0.245.1
++# github.com/osbuild/images v0.245.2-0.20260731173023-61b16700ffae
+ ## explicit; go 1.24.12
+ github.com/osbuild/images/data/dependencies
+ github.com/osbuild/images/data/distrodefs
+-- 
+2.47.3
+

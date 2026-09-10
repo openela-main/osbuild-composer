@@ -1,0 +1,669 @@
+From c74e98ed50451b518a4dbaa534d6bcefd50d08f1 Mon Sep 17 00:00:00 2001
+From: Sanne Raymaekers <sanne.raymaekers@gmail.com>
+Date: Wed, 9 Sep 2026 12:53:19 +0200
+Subject: [PATCH 5/6] go.mod: update github.com/labstack/echo/v4 to v4.15.3
+
+Fixes CVE-2026-55677.
+---
+ go.mod                                        |   8 +-
+ go.sum                                        |  17 +-
+ .../github.com/labstack/echo/v4/CHANGELOG.md  |  25 +++
+ vendor/github.com/labstack/echo/v4/context.go |  19 +-
+ vendor/github.com/labstack/echo/v4/echo.go    |   2 +-
+ vendor/github.com/labstack/echo/v4/echo_fs.go |  18 +-
+ .../echo/v4/internal/pathutil/pathutil.go     |  30 +++
+ .../labstack/echo/v4/middleware/static.go     |   8 +
+ vendor/github.com/labstack/gommon/log/log.go  | 180 +++++++++---------
+ .../mattn/go-isatty/isatty_others.go          |   4 +-
+ .../mattn/go-isatty/isatty_windows.go         |  15 +-
+ vendor/modules.txt                            |  17 +-
+ 12 files changed, 225 insertions(+), 118 deletions(-)
+ create mode 100644 vendor/github.com/labstack/echo/v4/internal/pathutil/pathutil.go
+
+diff --git a/go.mod b/go.mod
+index 6f94ab1bf..5da27a03d 100644
+--- a/go.mod
++++ b/go.mod
+@@ -26,8 +26,8 @@ require (
+ 	github.com/hashicorp/go-retryablehttp v0.7.8
+ 	github.com/jackc/pgx/v5 v5.9.0
+ 	github.com/julienschmidt/httprouter v1.3.0
+-	github.com/labstack/echo/v4 v4.15.1
+-	github.com/labstack/gommon v0.4.2
++	github.com/labstack/echo/v4 v4.15.3
++	github.com/labstack/gommon v0.5.0
+ 	github.com/oapi-codegen/oapi-codegen/v2 v2.6.0
+ 	github.com/oapi-codegen/runtime v1.2.0
+ 	github.com/openshift-online/ocm-sdk-go v0.1.497
+@@ -150,7 +150,7 @@ require (
+ 	github.com/kylelemons/godebug v1.1.0 // indirect
+ 	github.com/mailru/easyjson v0.9.0 // indirect
+ 	github.com/mattn/go-colorable v0.1.14 // indirect
+-	github.com/mattn/go-isatty v0.0.20 // indirect
++	github.com/mattn/go-isatty v0.0.22 // indirect
+ 	github.com/mattn/go-runewidth v0.0.16 // indirect
+ 	github.com/mattn/go-sqlite3 v1.14.28 // indirect
+ 	github.com/microcosm-cc/bluemonday v1.0.25 // indirect
+@@ -223,7 +223,7 @@ require (
+ 	golang.org/x/sys v0.46.0 // indirect
+ 	golang.org/x/term v0.44.0 // indirect
+ 	golang.org/x/text v0.38.0 // indirect
+-	golang.org/x/time v0.14.0 // indirect
++	golang.org/x/time v0.15.0 // indirect
+ 	golang.org/x/tools v0.45.0 // indirect
+ 	google.golang.org/genproto v0.0.0-20260128011058-8636f8732409 // indirect
+ 	google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409 // indirect
+diff --git a/go.sum b/go.sum
+index 828949fc5..e3d95fa40 100644
+--- a/go.sum
++++ b/go.sum
+@@ -425,10 +425,10 @@ github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=
+ github.com/kr/text v0.2.0/go.mod h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=
+ github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
+ github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
+-github.com/labstack/echo/v4 v4.15.1 h1:S9keusg26gZpjMmPqB5hOEvNKnmd1lNmcHrbbH2lnFs=
+-github.com/labstack/echo/v4 v4.15.1/go.mod h1:xmw1clThob0BSVRX1CRQkGQ/vjwcpOMjQZSZa9fKA/c=
+-github.com/labstack/gommon v0.4.2 h1:F8qTUNXgG1+6WQmqoUWnz8WiEU60mXVVw0P4ht1WRA0=
+-github.com/labstack/gommon v0.4.2/go.mod h1:QlUFxVM+SNXhDL/Z7YhocGIBYOiwB0mXm1+1bAPHPyU=
++github.com/labstack/echo/v4 v4.15.3 h1:lIdG4kK5RdMyhwCwSc4AmSQsLBb3AVwok6S8PX/9kwQ=
++github.com/labstack/echo/v4 v4.15.3/go.mod h1:Xzp1Ns1RA2c9fY7nSgUJkpkUZGNbEIVHZbtbOMPktBI=
++github.com/labstack/gommon v0.5.0 h1:6VSQ2NOzsnEJ5W6+84E0RbcaDDmgB6NIAzWCczTEe6c=
++github.com/labstack/gommon v0.5.0/go.mod h1:Rzlg7HHy1maLfzBYGg9NZcVuz1sA68HHhLjhcEllYE0=
+ github.com/lib/pq v1.0.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
+ github.com/lib/pq v1.1.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
+ github.com/lib/pq v1.2.0/go.mod h1:5WUZQaWbwv1U+lTReE5YruASi9Al49XbQIvNi/34Woo=
+@@ -442,8 +442,8 @@ github.com/mattn/go-colorable v0.1.14/go.mod h1:6LmQG8QLFO4G5z1gPvYEzlUgJ2wF+stg
+ github.com/mattn/go-isatty v0.0.5/go.mod h1:Iq45c/XA43vh69/j3iqttzPXn0bhXyGjM0Hdxcsrc5s=
+ github.com/mattn/go-isatty v0.0.7/go.mod h1:Iq45c/XA43vh69/j3iqttzPXn0bhXyGjM0Hdxcsrc5s=
+ github.com/mattn/go-isatty v0.0.12/go.mod h1:cbi8OIDigv2wuxKPP5vlRcQ1OAZbq2CE4Kysco4FUpU=
+-github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
+-github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
++github.com/mattn/go-isatty v0.0.22 h1:j8l17JJ9i6VGPUFUYoTUKPSgKe/83EYU2zBC7YNKMw4=
++github.com/mattn/go-isatty v0.0.22/go.mod h1:ZXfXG4SQHsB/w3ZeOYbR0PrPwLy+n6xiMrJlRFqopa4=
+ github.com/mattn/go-runewidth v0.0.16 h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=
+ github.com/mattn/go-runewidth v0.0.16/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
+ github.com/mattn/go-sqlite3 v1.14.28 h1:ThEiQrnbtumT+QMknw63Befp/ce/nUPgBPMlRFEum7A=
+@@ -792,7 +792,6 @@ golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f/go.mod h1:oPkhp1MJrh7nUepCBc
+ golang.org/x/sys v0.0.0-20220908164124-27713097b956/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.1.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.5.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+-golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.8.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.12.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+ golang.org/x/sys v0.17.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+@@ -826,8 +825,8 @@ golang.org/x/text v0.15.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
+ golang.org/x/text v0.21.0/go.mod h1:4IBbMaMmOPCJ8SecivzSH54+73PCFmPWxNTLm+vZkEQ=
+ golang.org/x/text v0.38.0 h1:sXmwo9DwP3OK9EZ7PqAdaooSGozfl/3a6/xJcbzPRhE=
+ golang.org/x/text v0.38.0/go.mod h1:YXZt3QhHUKYT53r2lLKFIVi6Ao1jdzrTR/KQ09qyxF4=
+-golang.org/x/time v0.14.0 h1:MRx4UaLrDotUKUdCIqzPC48t1Y9hANFKIRpNx+Te8PI=
+-golang.org/x/time v0.14.0/go.mod h1:eL/Oa2bBBK0TkX57Fyni+NgnyQQN4LitPmob2Hjnqw4=
++golang.org/x/time v0.15.0 h1:bbrp8t3bGUeFOx08pvsMYRTCVSMk89u4tKbNOZbp88U=
++golang.org/x/time v0.15.0/go.mod h1:Y4YMaQmXwGQZoFaVFk4YpCt4FLQMYKZe9oeV/f4MSno=
+ golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+ golang.org/x/tools v0.0.0-20190114222345-bf090417da8b/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+ golang.org/x/tools v0.0.0-20190226205152-f727befe758c/go.mod h1:9Yl7xja0Znq3iFh3HoIrodX9oNMXvdceNzlUR8zjMvY=
+diff --git a/vendor/github.com/labstack/echo/v4/CHANGELOG.md b/vendor/github.com/labstack/echo/v4/CHANGELOG.md
+index b7fd0e14e..86feea16b 100644
+--- a/vendor/github.com/labstack/echo/v4/CHANGELOG.md
++++ b/vendor/github.com/labstack/echo/v4/CHANGELOG.md
+@@ -1,5 +1,30 @@
+ # Changelog
+ 
++## v4.15.3 - 2026-06-14
++
++**Security**
++
++* fix(static): reject encoded path separators that bypass route-level middleware by @vishr in https://github.com/labstack/echo/pull/3011
++
++Fixes [GHSA-vfp3-v2gw-7wfq](https://github.com/labstack/echo/security/advisories/GHSA-vfp3-v2gw-7wfq): an encoded path separator (`%2F` or `%5C`) in a static file URL could bypass route-level middleware (e.g. authentication on a sibling route) and disclose static files. Both `StaticDirectoryHandler` (used by `Static`/`StaticFS`) and the `Static` middleware are affected. Backport of the v5 fix (#3009). Thanks to @a-tt-om and @oran-gugu for reporting.
++
++
++## v4.15.2 - 2026-05-01
++
++**Security**
++
++* `Context.Scheme()` should validate values taken from header by @aldas in https://github.com/labstack/echo/pull/2962
++
++Thanks to @shblue21 for reporting this [issue](https://github.com/labstack/echo/issues/2952).
++
++
++## v4.15.1 - 2026-02-22
++
++**Enhancements**
++
++* CSRF: support older token-based CSRF protection handler that want to render token into template by @aldas in https://github.com/labstack/echo/pull/2905
++
++
+ ## v4.15.0 - 2026-01-01
+ 
+ 
+diff --git a/vendor/github.com/labstack/echo/v4/context.go b/vendor/github.com/labstack/echo/v4/context.go
+index 67e83181c..6500e5eef 100644
+--- a/vendor/github.com/labstack/echo/v4/context.go
++++ b/vendor/github.com/labstack/echo/v4/context.go
+@@ -272,22 +272,35 @@ func (c *context) IsWebSocket() bool {
+ 	return strings.EqualFold(upgrade, "websocket")
+ }
+ 
++func isValidProto(proto string) bool {
++	if proto == "" {
++		return false
++	}
++	for _, p := range []string{"http", "https", "ws", "wss"} {
++		if strings.EqualFold(proto, p) {
++			return true
++		}
++	}
++	return false
++}
++
++// Scheme returns the HTTP protocol scheme, `http` or `https`.
+ func (c *context) Scheme() string {
+ 	// Can't use `r.Request.URL.Scheme`
+ 	// See: https://groups.google.com/forum/#!topic/golang-nuts/pMUkBlQBDF0
+ 	if c.IsTLS() {
+ 		return "https"
+ 	}
+-	if scheme := c.request.Header.Get(HeaderXForwardedProto); scheme != "" {
++	if scheme := c.request.Header.Get(HeaderXForwardedProto); isValidProto(scheme) {
+ 		return scheme
+ 	}
+-	if scheme := c.request.Header.Get(HeaderXForwardedProtocol); scheme != "" {
++	if scheme := c.request.Header.Get(HeaderXForwardedProtocol); isValidProto(scheme) {
+ 		return scheme
+ 	}
+ 	if ssl := c.request.Header.Get(HeaderXForwardedSsl); ssl == "on" {
+ 		return "https"
+ 	}
+-	if scheme := c.request.Header.Get(HeaderXUrlScheme); scheme != "" {
++	if scheme := c.request.Header.Get(HeaderXUrlScheme); isValidProto(scheme) {
+ 		return scheme
+ 	}
+ 	return "http"
+diff --git a/vendor/github.com/labstack/echo/v4/echo.go b/vendor/github.com/labstack/echo/v4/echo.go
+index ae2283f60..2ddca4d5f 100644
+--- a/vendor/github.com/labstack/echo/v4/echo.go
++++ b/vendor/github.com/labstack/echo/v4/echo.go
+@@ -267,7 +267,7 @@ const (
+ 
+ const (
+ 	// Version of Echo
+-	Version = "4.15.0"
++	Version = "4.15.3"
+ 	website = "https://echo.labstack.com"
+ 	// http://patorjk.com/software/taag/#p=display&f=Small%20Slant&t=Echo
+ 	banner = `
+diff --git a/vendor/github.com/labstack/echo/v4/echo_fs.go b/vendor/github.com/labstack/echo/v4/echo_fs.go
+index 0ffc4b0bf..f111095f1 100644
+--- a/vendor/github.com/labstack/echo/v4/echo_fs.go
++++ b/vendor/github.com/labstack/echo/v4/echo_fs.go
+@@ -9,8 +9,11 @@ import (
+ 	"net/http"
+ 	"net/url"
+ 	"os"
++	"path"
+ 	"path/filepath"
+ 	"strings"
++
++	"github.com/labstack/echo/v4/internal/pathutil"
+ )
+ 
+ type filesystem struct {
+@@ -58,6 +61,14 @@ func StaticDirectoryHandler(fileSystem fs.FS, disablePathUnescaping bool) Handle
+ 	return func(c Context) error {
+ 		p := c.Param("*")
+ 		if !disablePathUnescaping { // when router is already unescaping we do not want to do is twice
++			// The router matches routes against the raw, still-encoded request path, so an
++			// encoded path separator (%2F or %5C) is not treated as a segment boundary during
++			// routing. Unescaping it here would let it act as a separator and resolve a file
++			// outside the path the router authorized, bypassing route-level middleware (e.g. auth
++			// on a sibling route). No real filename contains a separator, so reject it as not found.
++			if pathutil.HasEncodedPathSeparator(p) {
++				return ErrNotFound
++			}
+ 			tmpPath, err := url.PathUnescape(p)
+ 			if err != nil {
+ 				return fmt.Errorf("failed to unescape path variable: %w", err)
+@@ -65,8 +76,11 @@ func StaticDirectoryHandler(fileSystem fs.FS, disablePathUnescaping bool) Handle
+ 			p = tmpPath
+ 		}
+ 
+-		// fs.FS.Open() already assumes that file names are relative to FS root path and considers name with prefix `/` as invalid
+-		name := filepath.ToSlash(filepath.Clean(strings.TrimPrefix(p, "/")))
++		// fs.FS.Open() already assumes that file names are relative to FS root path and considers name with prefix `/` as invalid.
++		// Use path.Clean (not filepath.Clean): fs.FS paths are always forward-slash, so a backslash must stay a literal
++		// character rather than being interpreted as a separator on Windows (which would resolve a file across a boundary
++		// the router never matched on).
++		name := path.Clean(strings.TrimPrefix(p, "/"))
+ 		fi, err := fs.Stat(fileSystem, name)
+ 		if err != nil {
+ 			return ErrNotFound
+diff --git a/vendor/github.com/labstack/echo/v4/internal/pathutil/pathutil.go b/vendor/github.com/labstack/echo/v4/internal/pathutil/pathutil.go
+new file mode 100644
+index 000000000..9934fa31c
+--- /dev/null
++++ b/vendor/github.com/labstack/echo/v4/internal/pathutil/pathutil.go
+@@ -0,0 +1,30 @@
++// SPDX-License-Identifier: MIT
++// SPDX-FileCopyrightText: © 2015 LabStack LLC and Echo contributors
++
++// Package pathutil holds internal helpers for safely handling request and file
++// paths. It is internal so it can be shared between the echo package and the
++// middleware package without becoming part of the public API.
++package pathutil
++
++// HasEncodedPathSeparator reports whether s contains a percent-encoded path
++// separator, case-insensitively: %2F/%2f (forward slash) or %5C/%5c (backslash).
++// Backslash is included as defense-in-depth against Windows-style separators even
++// though fs.FS itself only uses forward slashes.
++//
++// Such sequences let an attacker smuggle a separator past the router, which
++// matches on the raw encoded path, so they must be rejected before unescaping
++// when resolving static files.
++func HasEncodedPathSeparator(s string) bool {
++	for i := 0; i+2 < len(s); i++ {
++		if s[i] != '%' {
++			continue
++		}
++		switch {
++		case s[i+1] == '2' && (s[i+2] == 'f' || s[i+2] == 'F'): // %2F
++			return true
++		case s[i+1] == '5' && (s[i+2] == 'c' || s[i+2] == 'C'): // %5C
++			return true
++		}
++	}
++	return false
++}
+diff --git a/vendor/github.com/labstack/echo/v4/middleware/static.go b/vendor/github.com/labstack/echo/v4/middleware/static.go
+index 2d946c178..41066ebc4 100644
+--- a/vendor/github.com/labstack/echo/v4/middleware/static.go
++++ b/vendor/github.com/labstack/echo/v4/middleware/static.go
+@@ -14,6 +14,7 @@ import (
+ 	"strings"
+ 
+ 	"github.com/labstack/echo/v4"
++	"github.com/labstack/echo/v4/internal/pathutil"
+ 	"github.com/labstack/gommon/bytes"
+ )
+ 
+@@ -170,6 +171,13 @@ func StaticWithConfig(config StaticConfig) echo.MiddlewareFunc {
+ 			if strings.HasSuffix(c.Path(), "*") { // When serving from a group, e.g. `/static*`.
+ 				p = c.Param("*")
+ 			}
++			// The router matched on the raw, still-encoded path, so an encoded path separator in
++			// the wildcard would only now become a real separator and resolve a file the matched
++			// route never authorized, bypassing route-level middleware. Reject it before unescaping
++			// (see echo.StaticDirectoryHandler).
++			if pathutil.HasEncodedPathSeparator(p) {
++				return echo.ErrNotFound
++			}
+ 			p, err = url.PathUnescape(p)
+ 			if err != nil {
+ 				return
+diff --git a/vendor/github.com/labstack/gommon/log/log.go b/vendor/github.com/labstack/gommon/log/log.go
+index 25f719aa2..a22335186 100644
+--- a/vendor/github.com/labstack/gommon/log/log.go
++++ b/vendor/github.com/labstack/gommon/log/log.go
+@@ -138,93 +138,94 @@ func (l *Logger) SetHeader(h string) {
+ }
+ 
+ func (l *Logger) Print(i ...interface{}) {
+-	l.log(0, "", i...)
+-	// fmt.Fprintln(l.output, i...)
++	l.log(0, fmt.Sprint(i...), false)
+ }
+ 
+ func (l *Logger) Printf(format string, args ...interface{}) {
+-	l.log(0, format, args...)
++	l.log(0, fmt.Sprintf(format, args...), false)
+ }
+ 
+ func (l *Logger) Printj(j JSON) {
+-	l.log(0, "json", j)
++	l.logJSON(0, j)
+ }
+ 
+ func (l *Logger) Debug(i ...interface{}) {
+-	l.log(DEBUG, "", i...)
++	l.log(DEBUG, fmt.Sprint(i...), false)
+ }
+ 
+ func (l *Logger) Debugf(format string, args ...interface{}) {
+-	l.log(DEBUG, format, args...)
++	l.log(DEBUG, fmt.Sprintf(format, args...), false)
+ }
+ 
+ func (l *Logger) Debugj(j JSON) {
+-	l.log(DEBUG, "json", j)
++	l.logJSON(DEBUG, j)
+ }
+ 
+ func (l *Logger) Info(i ...interface{}) {
+-	l.log(INFO, "", i...)
++	l.log(INFO, fmt.Sprint(i...), false)
+ }
+ 
+ func (l *Logger) Infof(format string, args ...interface{}) {
+-	l.log(INFO, format, args...)
++	l.log(INFO, fmt.Sprintf(format, args...), false)
+ }
+ 
+ func (l *Logger) Infoj(j JSON) {
+-	l.log(INFO, "json", j)
++	l.logJSON(INFO, j)
+ }
+ 
+ func (l *Logger) Warn(i ...interface{}) {
+-	l.log(WARN, "", i...)
++	l.log(WARN, fmt.Sprint(i...), false)
+ }
+ 
+ func (l *Logger) Warnf(format string, args ...interface{}) {
+-	l.log(WARN, format, args...)
++	l.log(WARN, fmt.Sprintf(format, args...), false)
+ }
+ 
+ func (l *Logger) Warnj(j JSON) {
+-	l.log(WARN, "json", j)
++	l.logJSON(WARN, j)
+ }
+ 
+ func (l *Logger) Error(i ...interface{}) {
+-	l.log(ERROR, "", i...)
++	l.log(ERROR, fmt.Sprint(i...), false)
+ }
+ 
+ func (l *Logger) Errorf(format string, args ...interface{}) {
+-	l.log(ERROR, format, args...)
++	l.log(ERROR, fmt.Sprintf(format, args...), false)
+ }
+ 
+ func (l *Logger) Errorj(j JSON) {
+-	l.log(ERROR, "json", j)
++	l.logJSON(ERROR, j)
+ }
+ 
+ func (l *Logger) Fatal(i ...interface{}) {
+-	l.log(fatalLevel, "", i...)
++	l.log(fatalLevel, fmt.Sprint(i...), false)
+ 	os.Exit(1)
+ }
+ 
+ func (l *Logger) Fatalf(format string, args ...interface{}) {
+-	l.log(fatalLevel, format, args...)
++	l.log(fatalLevel, fmt.Sprintf(format, args...), false)
+ 	os.Exit(1)
+ }
+ 
+ func (l *Logger) Fatalj(j JSON) {
+-	l.log(fatalLevel, "json", j)
++	l.logJSON(fatalLevel, j)
+ 	os.Exit(1)
+ }
+ 
+ func (l *Logger) Panic(i ...interface{}) {
+-	l.log(panicLevel, "", i...)
+-	panic(fmt.Sprint(i...))
++	msg := fmt.Sprint(i...)
++	l.log(panicLevel, msg, false)
++	panic(msg)
+ }
+ 
+ func (l *Logger) Panicf(format string, args ...interface{}) {
+-	l.log(panicLevel, format, args...)
+-	panic(fmt.Sprintf(format, args...))
++	msg := fmt.Sprintf(format, args...)
++	l.log(panicLevel, msg, false)
++	panic(msg)
+ }
+ 
+ func (l *Logger) Panicj(j JSON) {
+-	l.log(panicLevel, "json", j)
++	l.logJSON(panicLevel, j)
+ 	panic(j)
+ }
+ 
+@@ -348,71 +349,76 @@ func Panicj(j JSON) {
+ 	global.Panicj(j)
+ }
+ 
+-func (l *Logger) log(level Lvl, format string, args ...interface{}) {
+-	if level >= l.Level() || level == 0 {
+-		buf := l.bufferPool.Get().(*bytes.Buffer)
+-		buf.Reset()
+-		defer l.bufferPool.Put(buf)
+-		_, file, line, _ := runtime.Caller(l.skip)
+-		message := ""
+-
+-		if format == "" {
+-			message = fmt.Sprint(args...)
+-		} else if format == "json" {
+-			b, err := json.Marshal(args[0])
+-			if err != nil {
+-				panic(err)
+-			}
+-			message = string(b)
+-		} else {
+-			message = fmt.Sprintf(format, args...)
++func (l *Logger) logJSON(level Lvl, j JSON) {
++	b, err := json.Marshal(j)
++	if err != nil {
++		panic(err)
++	}
++	l.log(level, string(b), true)
++}
++
++func (l *Logger) log(level Lvl, message string, jsonBody bool) {
++	if level < l.Level() && level != 0 {
++		return
++	}
++	buf := l.bufferPool.Get().(*bytes.Buffer)
++	buf.Reset()
++	defer l.bufferPool.Put(buf)
++	// JSON callers route through an extra logJSON wrapper; account for
++	// that frame so runtime.Caller still lands on the user's code. Keep
++	// this in sync with logJSON — if the wrapper is ever inlined away
++	// or moved, drop the increment.
++	skip := l.skip
++	if jsonBody {
++		skip++
++	}
++	_, file, line, _ := runtime.Caller(skip)
++
++	_, err := l.template.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
++		switch tag {
++		case "time_rfc3339":
++			return w.Write([]byte(time.Now().Format(time.RFC3339)))
++		case "time_rfc3339_nano":
++			return w.Write([]byte(time.Now().Format(time.RFC3339Nano)))
++		case "level":
++			return w.Write([]byte(l.levels[level]))
++		case "prefix":
++			return w.Write([]byte(l.prefix))
++		case "long_file":
++			return w.Write([]byte(file))
++		case "short_file":
++			return w.Write([]byte(path.Base(file)))
++		case "line":
++			return w.Write([]byte(strconv.Itoa(line)))
+ 		}
++		return 0, nil
++	})
++	if err != nil {
++		return
++	}
+ 
+-		_, err := l.template.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
+-			switch tag {
+-			case "time_rfc3339":
+-				return w.Write([]byte(time.Now().Format(time.RFC3339)))
+-			case "time_rfc3339_nano":
+-				return w.Write([]byte(time.Now().Format(time.RFC3339Nano)))
+-			case "level":
+-				return w.Write([]byte(l.levels[level]))
+-			case "prefix":
+-				return w.Write([]byte(l.prefix))
+-			case "long_file":
+-				return w.Write([]byte(file))
+-			case "short_file":
+-				return w.Write([]byte(path.Base(file)))
+-			case "line":
+-				return w.Write([]byte(strconv.Itoa(line)))
+-			}
+-			return 0, nil
+-		})
+-
+-		if err == nil {
+-			s := buf.String()
+-			i := buf.Len() - 1
+-			if i >= 0 && s[i] == '}' {
+-				// JSON header
+-				buf.Truncate(i)
+-				buf.WriteByte(',')
+-				if format == "json" {
+-					buf.WriteString(message[1:])
+-				} else {
+-					buf.WriteString(`"message":`)
+-					buf.WriteString(strconv.Quote(message))
+-					buf.WriteString(`}`)
+-				}
+-			} else {
+-				// Text header
+-				if len(s) > 0 {
+-					buf.WriteByte(' ')
+-				}
+-				buf.WriteString(message)
+-			}
+-			buf.WriteByte('\n')
+-			l.mutex.Lock()
+-			defer l.mutex.Unlock()
+-			l.output.Write(buf.Bytes())
++	s := buf.String()
++	i := buf.Len() - 1
++	if i >= 0 && s[i] == '}' {
++		// JSON header
++		buf.Truncate(i)
++		buf.WriteByte(',')
++		if jsonBody {
++			buf.WriteString(message[1:])
++		} else {
++			buf.WriteString(`"message":`)
++			buf.WriteString(strconv.Quote(message))
++			buf.WriteString(`}`)
++		}
++	} else {
++		// Text header
++		if len(s) > 0 {
++			buf.WriteByte(' ')
+ 		}
++		buf.WriteString(message)
+ 	}
++	buf.WriteByte('\n')
++	l.mutex.Lock()
++	defer l.mutex.Unlock()
++	l.output.Write(buf.Bytes())
+ }
+diff --git a/vendor/github.com/mattn/go-isatty/isatty_others.go b/vendor/github.com/mattn/go-isatty/isatty_others.go
+index 7402e0618..b24a2fadc 100644
+--- a/vendor/github.com/mattn/go-isatty/isatty_others.go
++++ b/vendor/github.com/mattn/go-isatty/isatty_others.go
+@@ -1,5 +1,5 @@
+-//go:build (appengine || js || nacl || tinygo || wasm) && !windows
+-// +build appengine js nacl tinygo wasm
++//go:build (appengine || js || nacl || tinygo || wasm || wasip1 || wasip2) && !windows
++// +build appengine js nacl tinygo wasm wasip1 wasip2
+ // +build !windows
+ 
+ package isatty
+diff --git a/vendor/github.com/mattn/go-isatty/isatty_windows.go b/vendor/github.com/mattn/go-isatty/isatty_windows.go
+index 8e3c99171..5f29c11dd 100644
+--- a/vendor/github.com/mattn/go-isatty/isatty_windows.go
++++ b/vendor/github.com/mattn/go-isatty/isatty_windows.go
+@@ -31,6 +31,10 @@ func init() {
+ 	if procGetFileInformationByHandleEx.Find() != nil {
+ 		procGetFileInformationByHandleEx = nil
+ 	}
++	// Check if NtQueryObject is available.
++	if procNtQueryObject.Find() != nil {
++		procNtQueryObject = nil
++	}
+ }
+ 
+ // IsTerminal return true if the file descriptor is terminal.
+@@ -43,6 +47,7 @@ func IsTerminal(fd uintptr) bool {
+ // Check pipe name is used for cygwin/msys2 pty.
+ // Cygwin/MSYS2 PTY has a name like:
+ //   \{cygwin,msys}-XXXXXXXXXXXXXXXX-ptyN-{from,to}-master
++// On Windows 7 a trailing suffix (e.g. "-nat") may be appended.
+ func isCygwinPipeName(name string) bool {
+ 	token := strings.Split(name, "-")
+ 	if len(token) < 5 {
+@@ -72,13 +77,19 @@ func isCygwinPipeName(name string) bool {
+ 		return false
+ 	}
+ 
++	for _, t := range token[5:] {
++		if t == "" {
++			return false
++		}
++	}
++
+ 	return true
+ }
+ 
+-// getFileNameByHandle use the undocomented ntdll NtQueryObject to get file full name from file handler
++// getFileNameByHandle use the undocumented ntdll NtQueryObject to get file full name from file handler
+ // since GetFileInformationByHandleEx is not available under windows Vista and still some old fashion
+ // guys are using Windows XP, this is a workaround for those guys, it will also work on system from
+-// Windows vista to 10
++// Windows Vista to 10
+ // see https://stackoverflow.com/a/18792477 for details
+ func getFileNameByHandle(fd uintptr) (string, error) {
+ 	if procNtQueryObject == nil {
+diff --git a/vendor/modules.txt b/vendor/modules.txt
+index 7bb947fd0..38b7991ec 100644
+--- a/vendor/modules.txt
++++ b/vendor/modules.txt
+@@ -862,12 +862,13 @@ github.com/kr/text
+ ## explicit; go 1.11
+ github.com/kylelemons/godebug/diff
+ github.com/kylelemons/godebug/pretty
+-# github.com/labstack/echo/v4 v4.15.1
+-## explicit; go 1.24.0
++# github.com/labstack/echo/v4 v4.15.3
++## explicit; go 1.25.0
+ github.com/labstack/echo/v4
++github.com/labstack/echo/v4/internal/pathutil
+ github.com/labstack/echo/v4/middleware
+-# github.com/labstack/gommon v0.4.2
+-## explicit; go 1.18
++# github.com/labstack/gommon v0.5.0
++## explicit; go 1.23.0
+ github.com/labstack/gommon/bytes
+ github.com/labstack/gommon/color
+ github.com/labstack/gommon/log
+@@ -879,8 +880,8 @@ github.com/mailru/easyjson/jwriter
+ # github.com/mattn/go-colorable v0.1.14
+ ## explicit; go 1.18
+ github.com/mattn/go-colorable
+-# github.com/mattn/go-isatty v0.0.20
+-## explicit; go 1.15
++# github.com/mattn/go-isatty v0.0.22
++## explicit; go 1.21
+ github.com/mattn/go-isatty
+ # github.com/mattn/go-runewidth v0.0.16
+ ## explicit; go 1.9
+@@ -1399,8 +1400,8 @@ golang.org/x/text/transform
+ golang.org/x/text/unicode/bidi
+ golang.org/x/text/unicode/norm
+ golang.org/x/text/width
+-# golang.org/x/time v0.14.0
+-## explicit; go 1.24.0
++# golang.org/x/time v0.15.0
++## explicit; go 1.25.0
+ golang.org/x/time/rate
+ # golang.org/x/tools v0.45.0
+ ## explicit; go 1.25.0
+-- 
+2.47.3
+

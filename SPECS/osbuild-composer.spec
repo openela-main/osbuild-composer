@@ -25,7 +25,7 @@ It is compatible with composer-cli and cockpit-composer clients.
 }
 
 Name:           osbuild-composer
-Release:        3%{?dist}.2
+Release:        5%{?dist}
 Summary:        An image building service based on osbuild
 
 # osbuild-composer doesn't have support for building i686 and armv7hl images
@@ -38,6 +38,10 @@ Source0:        %{gosource}
 
 Patch0: 0001-update-10.2-test-repositories.patch
 Patch1: 0002-go.mod-update-osbuild-images-to-v0.245.1.patch
+Patch2: 0003-go.mod-update-osbuild-images-to-61b16700.patch
+Patch3: 0004-go.mod-bump-indirect-golang.org-x-net-dependency-to-.patch
+Patch4: 0005-go.mod-update-github.com-labstack-echo-v4-to-v4.15.3.patch
+Patch5: 0006-go.mod-update-go.opentelemetry.io-otel-to-v1.44.0.patch
 
 BuildRequires:  %{?go_compiler:compiler(go-compiler)}%{!?go_compiler:golang}
 BuildRequires:  systemd
@@ -431,6 +435,14 @@ Integration tests to be run on a pristine-dedicated system to test the osbuild-c
 %endif
 
 %changelog
+* Wed Sep 9 2026 sraymaek <sraymaek@redhat.com> - 165.1-5
+- go.mod: bump indirect golang.org/x/net dependency to v0.56.0
+  Resolves: RHEL-191094, RHEL-191545, RHEL-223447
+- go.mod: update github.com/labstack/echo/v4 to v4.15.3
+  Resolves: RHEL-213913
+- go.mod: update go.opentelemetry.io/otel to v1.44.0
+  Resolves: RHEL-239489
+
 * Mon Aug 31 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 165.1-3.2
 - Rebuild for updated golang
 
